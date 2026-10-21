@@ -1,9 +1,59 @@
 # 部署与托管方案
 
-> 结论先说：**仓库放 GitHub，站点托管 Cloudflare Pages**。
-> 访客永远不需要登录；你只在第一次配置时登录一次，之后发布 = `git push`。
+> **当前决定（2026-10-21）**：不走 Cloudflare Pages —— 本机访问该平台不稳定。
+> 先只做本地验证，等自有服务器就绪后**自建部署**（§5 有可直接抄的配置）。
+> 下面的平台对比保留作为备选参考。
 
-## 1. 为什么必须有一个账号
+## 0. 自建部署（当前路线）
+
+```bash
+# web/ 下构建
+pnpm install && pnpm build        # 产物在 web/dist
+
+# 推到服务器（nginx 静态目录）
+rsync -avz --delete web/dist/ user@server:/var/www/banyue/
+
+# 服务器上：Caddy 两行搞定 HTTPS
+# /etc/caddy/Caddyfile
+# banyue.example.com {
+#     root * /var/www/banyue
+#     try_files {path} /index.html   # SPA 回退
+#     file_server
+# }
+```
+
+nginx 等价配置：
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name banyue.example.com;
+
+    root /var/www/banyue;
+    index index.html;
+
+    # SPA 路由：找不到文件时回退到 index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 带 hash 的静态资源可以长缓存
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
+要点：
+
+- `web/dist` 是纯静态文件，**不需要 Node 运行时**；
+- SPA 回退必须配（`try_files` / `try_files {path} /index.html`），否则刷新 `/post/xxx` 会 404；
+- `vite build` 已经把 `_redirects`、`404.html` 一起生成，托管方支持哪个用哪个；
+- 本地验证等价于线上：`pnpm build && pnpm preview` 起的就是最终产物；
+- 媒体文件（书、音乐）不上传服务器，只存在读者浏览器里，服务器只发静态文件。
+
+## 1. 为什么必须有一个账号（备选方案的前提）
 
 「永久在线 + 任何设备可访问」= 必须有一台一直在线的机器 + 一个域名。免费的方案无一例外由平台提供，
 平台就需要一个归属账号（否则谁都能往你的站点写内容）。这是现实边界，不是产品选择：
@@ -32,7 +82,7 @@ v2 把内容放回 Git（纯文本、可迁移、可 diff），平台只负责�
 **为什么不用 Cloudflare Drop 当长期方案**：它确实零账号，但产物一小时后自动删除，且不提供自定义域名。
 它的正确用法是「大改动的临时预览」，而 `pnpm preview` 本地就能做到，所以不纳入主流程。
 
-## 3. 推荐架构
+## 3. 备选架构：GitHub + Cloudflare Pages（暂不采用）
 
 ```
 本地开发 (pnpm dev)  ──►  本地验证 (test / build / preview)
@@ -49,7 +99,7 @@ v2 把内容放回 Git（纯文本、可迁移、可 diff），平台只负责�
 - **大改动**：推分支 → PR → 自动生成预览 URL → 确认后合并到 `main` → 自动上线。
 - **访客**：任何设备打开同一个域名，无需登录、无需注册。
 
-## 4. 一次性配置（约 10 分钟）
+## 4. 备选方案的一次性配置（约 10 分钟）
 
 1. **建仓库**：GitHub 新建 `banyue`（公开或私有都行），`git remote add origin` 后 push。
 2. **连 Cloudflare Pages**：Cloudflare 控制台 → Workers & Pages → Create → Pages → Connect to Git →

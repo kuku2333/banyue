@@ -13,6 +13,7 @@ interface NavLink {
 
 const links: NavLink[] = [
   { to: '/', label: '首页', names: ['home', 'post', 'tag'] },
+  { to: '/shelf', label: '书架', names: ['shelf', 'read'] },
   { to: '/archive', label: '归档', names: ['archive'] },
   { to: '/tags', label: '标签', names: ['tags'] },
   { to: '/about', label: '关于', names: ['about'] },

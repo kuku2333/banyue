@@ -9,6 +9,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/PostView.vue'),
   },
   { path: '/tags', name: 'tags', component: () => import('@/views/TagsView.vue'), meta: { title: '标签 · 半页' } },
+  { path: '/shelf', name: 'shelf', component: () => import('@/views/ShelfView.vue'), meta: { title: '书架 · 半页' } },
+  {
+    path: '/read/:id',
+    name: 'read',
+    component: () => import('@/views/ReaderView.vue'),
+    meta: { title: '阅读 · 半页' },
+  },
   {
     path: '/tag/:tag',
     name: 'tag',

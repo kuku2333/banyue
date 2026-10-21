@@ -11,6 +11,9 @@ importers:
       '@vueuse/core':
         specifier: ^13.0.0
         version: 13.9.0(vue@3.5.44(typescript@5.9.3))
+      dexie:
+        specifier: ^4.4.6
+        version: 4.4.6
       markdown-it:
         specifier: ^14.1.0
         version: 14.3.3
@@ -856,6 +859,9 @@ packages:
 
   deep-is@0.1.4:
     resolution: {integrity: sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==}
+
+  dexie@4.4.6:
+    resolution: {integrity: sha512-hJP/BO6mjB+tX6hToIO1kmxYLNmun90wYbfcoAoLpKEyDYal/k33dg0TAfoUe2TDsbbLoVIzljJ3BN2UbR5EOg==}
 
   editorconfig@3.0.2:
     resolution: {integrity: sha512-T0ix8GhtxyKVfUFEcvdNDt3YGqlwkFHbD4/5bgFUDgFmxhI/cSRAeJ87/Sz//Cq8Eam6JX/e23RkoFO71P7aAA==}
@@ -2255,6 +2261,8 @@ snapshots:
   deep-eql@5.0.2: {}
 
   deep-is@0.1.4: {}
+
+  dexie@4.4.6: {}
 
   editorconfig@3.0.2:
     dependencies:

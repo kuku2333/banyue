@@ -13,6 +13,12 @@ const tabs = [
     d: 'M3 10.5L12 3l9 7.5M5 10v10h14V10',
   },
   {
+    to: '/shelf',
+    name: 'shelf',
+    label: '书架',
+    d: 'M4 4.5h6v15H4zM10 4.5h6v15h-6zM17.2 5.2l3 14.2',
+  },
+  {
     to: '/archive',
     name: 'archive',
     label: '归档',
