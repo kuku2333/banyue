@@ -18,6 +18,7 @@ const browserGlobals = {
   cancelAnimationFrame: 'readonly',
   HTMLElement: 'readonly',
   HTMLInputElement: 'readonly',
+  HTMLTextAreaElement: 'readonly',
   HTMLCanvasElement: 'readonly',
   KeyboardEvent: 'readonly',
   MouseEvent: 'readonly',

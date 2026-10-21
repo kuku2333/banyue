@@ -38,6 +38,12 @@ const isActive = (link: NavLink): boolean => link.names.includes(activeName.valu
         </RouterLink>
       </nav>
 
+      <RouterLink class="icon-btn" to="/write" aria-label="写点东西">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+        </svg>
+      </RouterLink>
       <RouterLink class="icon-btn" to="/music" aria-label="听歌">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="7" cy="18" r="2.6" />

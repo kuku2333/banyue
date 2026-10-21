@@ -32,10 +32,21 @@ export interface TrackRecord {
   data?: Blob
 }
 
+export interface DraftRecord {
+  id: string
+  title: string
+  content: string
+  tags: string
+  excerpt: string
+  createdAt: number
+  updatedAt: number
+}
+
 class BanyueDatabase extends Dexie {
   books!: Table<BookRecord, string>
   texts!: Table<TextRecord, string>
   tracks!: Table<TrackRecord, string>
+  drafts!: Table<DraftRecord, string>
 
   constructor() {
     super('banyue-reader')
@@ -43,6 +54,9 @@ class BanyueDatabase extends Dexie {
       books: 'id, createdAt, lastReadAt',
       texts: 'bookId',
       tracks: 'id, createdAt, hash',
+    })
+    this.version(2).stores({
+      drafts: 'id, updatedAt',
     })
   }
 }
@@ -114,4 +128,22 @@ export async function getTrackBlob(id: string): Promise<Blob | undefined> {
 
 export async function deleteTrack(id: string): Promise<void> {
   await db().tracks.delete(id)
+}
+
+/* ---------------- 写作台草稿 ---------------- */
+
+export async function listDrafts(): Promise<DraftRecord[]> {
+  return db().drafts.orderBy('updatedAt').reverse().toArray()
+}
+
+export async function getDraft(id: string): Promise<DraftRecord | undefined> {
+  return db().drafts.get(id)
+}
+
+export async function putDraft(draft: DraftRecord): Promise<void> {
+  await db().drafts.put(draft)
+}
+
+export async function deleteDraft(id: string): Promise<void> {
+  await db().drafts.delete(id)
 }
