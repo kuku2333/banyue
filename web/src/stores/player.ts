@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { useStorage } from '@vueuse/core'
 import type { Track } from '@/lib/music'
 import { resolvePreview } from '@/lib/music'
@@ -27,6 +27,28 @@ export const usePlayerStore = defineStore('player', () => {
 
   let audio: HTMLAudioElement | null = null
   let objectUrl: string | null = null
+  let audioContext: AudioContext | null = null
+  const analyser = shallowRef<AnalyserNode | null>(null)
+  const blobCache = new Map<string, string>()
+
+  function ensureAnalyser(element: HTMLAudioElement): void {
+    if (audioContext) {
+      if (audioContext.state === 'suspended') void audioContext.resume()
+      return
+    }
+    try {
+      audioContext = new AudioContext()
+      const source = audioContext.createMediaElementSource(element)
+      const node = audioContext.createAnalyser()
+      node.fftSize = 128
+      node.smoothingTimeConstant = 0.82
+      source.connect(node)
+      node.connect(audioContext.destination)
+      analyser.value = node
+    } catch {
+      analyser.value = null
+    }
+  }
 
   const current = computed<Track | null>(() => queue.value[index.value] ?? null)
   const progress = computed(() => (duration.value > 0 ? currentTime.value / duration.value : 0))
@@ -72,7 +94,21 @@ export const usePlayerStore = defineStore('player', () => {
       objectUrl = URL.createObjectURL(blob)
       return objectUrl
     }
-    return resolvePreview(track)
+    const url = await resolvePreview(track)
+    if (!url) return null
+    const cached = blobCache.get(url)
+    if (cached) return cached
+    // 转成 blob 再播：既绕开跨域限制，也让 Web Audio 能拿到频谱做律动
+    try {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(String(response.status))
+      const blob = await response.blob()
+      const object = URL.createObjectURL(blob)
+      blobCache.set(url, object)
+      return object
+    } catch {
+      return url
+    }
   }
 
   async function load(target: Track, autoplay = true): Promise<void> {
@@ -85,6 +121,7 @@ export const usePlayerStore = defineStore('player', () => {
         return
       }
       const element = ensureAudio()
+      ensureAnalyser(element)
       element.src = src
       currentTime.value = 0
       duration.value = 0
@@ -242,6 +279,7 @@ export const usePlayerStore = defineStore('player', () => {
     favorites,
     mode,
     volume,
+    analyser,
     current,
     progress,
     hasNext,

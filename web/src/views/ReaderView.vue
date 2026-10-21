@@ -28,8 +28,9 @@ const tocOpen = ref(false)
 const settingsOpen = ref(false)
 const chromeVisible = ref(true)
 
-const COLUMN_GAP = 64
+const GUTTER = 56
 const FLIP_MS = 620
+const SPREAD_MIN_WIDTH = 900
 
 type FlipDir = 'fwd' | 'bwd'
 
@@ -37,6 +38,7 @@ type FlipDir = 'fwd' | 'bwd'
 const flipping = ref<{ dir: FlipDir } | null>(null)
 const angle = ref(0)
 const dragging = ref(false)
+const viewportWidth = ref(0)
 
 const chapter = computed(() => chapters.value[chapterIndex.value] ?? null)
 const paragraphs = computed(() => (chapter.value ? toParagraphs(chapter.value.content) : []))
@@ -49,26 +51,63 @@ const themeClass = computed(() => `theme-${settings.theme}`)
 const contentStyle = computed(() => ({
   fontSize: `${settings.fontSize}px`,
   lineHeight: String(settings.lineHeight),
-  maxWidth: `${settings.columnWidth}rem`,
 }))
 
-/** 翻页时底层要显示「即将露出来的那一页」 */
-const basePage = computed(() => {
+/** 版心设置换算成列宽，并受视口限制 */
+const preferredColumnPx = computed(() => settings.columnWidth * 16)
+const bookWidth = computed(() =>
+  layout.value === 'spread' ? pageWidth.value * 2 + GUTTER : pageWidth.value,
+)
+const halfLeftStyle = computed(() => ({ width: `${pageWidth.value}px`, left: '0px' }))
+const halfRightStyle = computed(() =>
+  layout.value === 'spread'
+    ? { width: `${pageWidth.value}px`, left: `${pageWidth.value + GUTTER}px` }
+    : { width: `${pageWidth.value}px`, left: '0px' },
+)
+const leafPositionStyle = computed(() => {
+  if (layout.value === 'single') return { width: `${pageWidth.value}px`, left: '0px' }
+  return leafOnLeft.value
+    ? { width: `${pageWidth.value}px`, left: '0px' }
+    : { width: `${pageWidth.value}px`, left: `${pageWidth.value + GUTTER}px` }
+})
+
+/** 双页对开需要够宽，否则自动退回单页 */
+const layout = computed<'single' | 'spread'>(() =>
+  settings.layout === 'spread' && viewportWidth.value >= SPREAD_MIN_WIDTH ? 'spread' : 'single',
+)
+const step = computed(() => (layout.value === 'spread' ? 2 : 1))
+
+/** 底层显示的是翻完之后的那一屏 */
+const baseStart = computed(() => {
   if (!flipping.value) return pageIndex.value
-  return flipping.value.dir === 'fwd' ? pageIndex.value + 1 : pageIndex.value
+  return flipping.value.dir === 'fwd'
+    ? pageIndex.value + step.value
+    : Math.max(0, pageIndex.value - step.value)
 })
-/** 正在翻转的页：向前翻是当前页，向后翻是上一页 */
+
+/** 正在翻的那一页：单页时是整页；对开时向前翻是右页、向后翻是左页 */
 const leafPage = computed(() => {
-  if (!flipping.value || flipping.value.dir === 'fwd') return pageIndex.value
-  return Math.max(0, pageIndex.value - 1)
+  if (layout.value === 'spread') {
+    return flipping.value?.dir === 'bwd' ? pageIndex.value : pageIndex.value + 1
+  }
+  return flipping.value?.dir === 'bwd' ? Math.max(0, pageIndex.value - 1) : pageIndex.value
 })
-const leafVisible = computed(() => Boolean(flipping.value) && leafPage.value !== basePage.value)
+
+const leafVisible = computed(() => Boolean(flipping.value))
+const leafOnLeft = computed(
+  () => layout.value === 'spread' && flipping.value?.dir === 'bwd',
+)
+
+const leafStyle = computed(() => ({
+  transform: `rotateY(${angle.value}deg)`,
+  transformOrigin: leafOnLeft.value ? 'right center' : 'left center',
+}))
 
 function stripStyle(page: number): Record<string, string> {
   return {
-    transform: `translateX(-${page * (pageWidth.value + COLUMN_GAP)}px)`,
+    transform: `translateX(-${page * (pageWidth.value + GUTTER)}px)`,
     columnWidth: `${pageWidth.value}px`,
-    columnGap: `${COLUMN_GAP}px`,
+    columnGap: `${GUTTER}px`,
     height: `${pageHeight.value}px`,
   }
 }
@@ -89,13 +128,14 @@ async function measurePages(reset = false): Promise<void> {
   const viewport = viewportEl.value
   const strip = stripEl.value
   if (!viewport || !strip) return
-  pageWidth.value = viewport.clientWidth
+  viewportWidth.value = viewport.clientWidth
+  pageWidth.value =
+    layout.value === 'spread'
+      ? Math.min(preferredColumnPx.value, Math.floor((viewport.clientWidth - GUTTER) / 2))
+      : Math.min(preferredColumnPx.value, viewport.clientWidth)
   pageHeight.value = viewport.clientHeight
   await nextTick()
-  pageCount.value = Math.max(
-    1,
-    Math.round((strip.scrollWidth + COLUMN_GAP) / (pageWidth.value + COLUMN_GAP)),
-  )
+  pageCount.value = Math.max(1, Math.round((strip.scrollWidth + GUTTER) / (pageWidth.value + GUTTER)))
   if (reset) pageIndex.value = 0
   pageIndex.value = Math.min(pageIndex.value, pageCount.value - 1)
 }
@@ -126,23 +166,38 @@ async function loadBook(): Promise<void> {
 
 function commitFlip(): void {
   if (!flipping.value) return
-  if (flipping.value.dir === 'fwd') pageIndex.value = Math.min(pageIndex.value + 1, pageCount.value - 1)
-  else pageIndex.value = Math.max(pageIndex.value - 1, 0)
+  if (flipping.value.dir === 'fwd') {
+    pageIndex.value = Math.min(pageIndex.value + step.value, pageCount.value - 1)
+  } else {
+    pageIndex.value = Math.max(pageIndex.value - step.value, 0)
+  }
   flipping.value = null
   angle.value = 0
   scheduleSave()
+}
+
+/** 把 0→1 的翻页进度映射成角度：对开时右页向左倒、左页向右倒；单页沿用旧行为 */
+function angleFor(dir: FlipDir, progress: number): number {
+  if (layout.value === 'spread') return dir === 'fwd' ? -180 * progress : 180 * progress
+  return dir === 'fwd' ? -180 * progress : -180 * (1 - progress)
+}
+
+function progressFor(dir: FlipDir, value: number): number {
+  const absolute = Math.abs(value) / 180
+  if (layout.value === 'spread') return absolute
+  return dir === 'fwd' ? absolute : 1 - absolute
 }
 
 function startFlip(dir: FlipDir): void {
   if (flipping.value) return
   if (flipTimer) clearTimeout(flipTimer)
   flipping.value = { dir }
-  angle.value = dir === 'fwd' ? 0 : -180
+  angle.value = angleFor(dir, 0)
   void nextTick(() => {
     // 等两帧：先让起始角度画出来，再改终点角度才会触发 transition
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        angle.value = dir === 'fwd' ? -180 : 0
+        angle.value = angleFor(dir, 1)
         flipTimer = setTimeout(commitFlip, FLIP_MS)
       })
     })
@@ -182,8 +237,11 @@ async function turn(delta: number): Promise<void> {
   }
   if (flipping.value) return
   if (delta > 0) {
-    if (pageIndex.value + 1 < pageCount.value) startFlip('fwd')
-    else goNextChapter()
+    if (pageIndex.value + step.value < pageCount.value) startFlip('fwd')
+    else if (pageIndex.value + 1 < pageCount.value) {
+      pageIndex.value += 1
+      scheduleSave()
+    } else goNextChapter()
   } else if (pageIndex.value > 0) {
     startFlip('bwd')
   } else {
@@ -222,15 +280,15 @@ function onPointerMove(event: PointerEvent): void {
   if (!dragDir) {
     if (Math.abs(dx) < 6) return
     const forward = dx < 0
-    if (forward && pageIndex.value + 1 >= pageCount.value) return
+    if (forward && pageIndex.value + step.value >= pageCount.value) return
     if (!forward && pageIndex.value <= 0) return
     dragDir = forward ? 'fwd' : 'bwd'
     suppressClick = true
     flipping.value = { dir: dragDir }
-    angle.value = dragDir === 'fwd' ? 0 : -180
+    angle.value = angleFor(dragDir, 0)
   }
   const progress = Math.min(1, Math.abs(dx) / dragWidth)
-  angle.value = dragDir === 'fwd' ? -180 * progress : -180 * (1 - progress)
+  angle.value = angleFor(dragDir, progress)
 }
 
 function onPointerUp(): void {
@@ -241,18 +299,12 @@ function onPointerUp(): void {
     suppressClick = false
     return
   }
-  const progress = Math.abs(angle.value) / 180
-  const done = dragDir === 'fwd' ? progress > 0.28 : progress < 0.72
-  if (done) {
-    angle.value = dragDir === 'fwd' ? -180 : 0
-    flipTimer = setTimeout(commitFlip, FLIP_MS * 0.55)
-  } else {
-    angle.value = dragDir === 'fwd' ? 0 : -180
-    flipTimer = setTimeout(() => {
-      flipping.value = null
-      angle.value = 0
-    }, FLIP_MS * 0.55)
-  }
+  const done = progressFor(dragDir, angle.value) > 0.28
+  angle.value = angleFor(dragDir, done ? 1 : 0)
+  flipTimer = setTimeout(done ? commitFlip : () => {
+    flipping.value = null
+    angle.value = 0
+  }, FLIP_MS * 0.55)
   dragDir = null
   setTimeout(() => (suppressClick = false), 60)
 }
@@ -360,9 +412,6 @@ onBeforeUnmount(() => {
       <div class="r-actions">
         <button type="button" class="r-btn" :class="{ on: tocOpen }" @click="tocOpen = !tocOpen">目录</button>
         <button type="button" class="r-btn" :class="{ on: settingsOpen }" @click="settingsOpen = !settingsOpen">设置</button>
-        <button type="button" class="r-btn" @click="settings.mode = settings.mode === 'paged' ? 'scroll' : 'paged'">
-          {{ settings.mode === 'paged' ? '翻页' : '滚动' }}
-        </button>
       </div>
     </header>
 
@@ -375,25 +424,41 @@ onBeforeUnmount(() => {
       <div
         v-if="settings.mode === 'paged'"
         class="book"
+        :class="layout"
+        :style="{ width: `${bookWidth}px` }"
         @pointerdown="onPointerDown"
       >
-        <div class="page base">
+        <div v-if="layout === 'spread'" class="half left" :style="halfLeftStyle">
           <div class="clip">
-            <div ref="stripEl" class="strip" :style="stripStyle(basePage)">
+            <div class="strip" :style="stripStyle(baseStart)">
               <div class="reader-content" :style="contentStyle">
                 <h2>{{ chapter?.title }}</h2>
                 <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph }}</p>
               </div>
             </div>
           </div>
-          <span class="page-shade" />
+        </div>
+
+        <div class="half right" :style="halfRightStyle">
+          <div class="clip">
+            <div
+              ref="stripEl"
+              class="strip"
+              :style="stripStyle(layout === 'spread' ? baseStart + 1 : baseStart)"
+            >
+              <div class="reader-content" :style="contentStyle">
+                <h2>{{ chapter?.title }}</h2>
+                <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph }}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div
           v-if="leafVisible"
           class="page leaf"
-          :class="{ dragging }"
-          :style="{ transform: `rotateY(${angle}deg)` }"
+          :class="{ dragging, left: leafOnLeft, single: layout === 'single' }"
+          :style="[leafStyle, leafPositionStyle]"
         >
           <div class="clip">
             <div class="strip" :style="stripStyle(leafPage)">
@@ -405,6 +470,8 @@ onBeforeUnmount(() => {
           </div>
           <span class="page-curl" />
         </div>
+
+        <span v-if="layout === 'spread'" class="spine" aria-hidden="true" />
 
         <div class="hit-area">
           <button type="button" class="tap left" aria-label="上一页" @click="tapTurn(-1)" />
@@ -475,6 +542,23 @@ onBeforeUnmount(() => {
         </section>
 
         <section>
+          <h4>翻页方式</h4>
+          <div class="seg">
+            <button type="button" :class="{ on: settings.mode === 'paged' }" @click="settings.mode = 'paged'">翻页</button>
+            <button type="button" :class="{ on: settings.mode === 'scroll' }" @click="settings.mode = 'scroll'">滚动</button>
+          </div>
+        </section>
+
+        <section>
+          <h4>版式</h4>
+          <div class="seg">
+            <button type="button" :class="{ on: settings.layout === 'spread' }" @click="settings.layout = 'spread'">左右对开</button>
+            <button type="button" :class="{ on: settings.layout === 'single' }" @click="settings.layout = 'single'">单页</button>
+          </div>
+          <p class="seg-hint">屏幕较窄时自动使用单页。</p>
+        </section>
+
+        <section>
           <h4>字号</h4>
           <div class="stepper">
             <button type="button" class="r-btn" @click="settings.bumpFont(-1)">A−</button>
@@ -501,7 +585,7 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
-        <p class="hint">← → 翻页 · 空格下一页 · Esc 退出</p>
+        <p class="hint">← → 翻页 · 空格下一页 · Esc 退出 · 也可以按住页面左右拖动</p>
       </aside>
     </Transition>
   </div>
@@ -628,46 +712,80 @@ onBeforeUnmount(() => {
 .book {
   position: relative;
   height: 100%;
+  margin: 0 auto;
   perspective: 2600px;
   perspective-origin: 50% 50%;
   touch-action: pan-y;
 }
 
-.page {
+/* 对开时左右各占一半，中间留出书脊 */
+.half {
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
   overflow: hidden;
   background: var(--paper, #121a26);
   border-radius: 3px;
 }
 
-.page.base {
-  box-shadow: inset -26px 0 46px -30px rgba(0, 0, 0, 0.55);
+.book.spread .half {
+  box-shadow: inset 0 0 40px -26px rgba(0, 0, 0, 0.7);
 }
 
-/* 右侧书页边缘 + 左侧书脊，单页也有「书」的厚度 */
-.page.base::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 7px;
-  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 3px);
-  opacity: 0.7;
-  pointer-events: none;
-}
-
-.book::before {
-  content: '';
-  position: absolute;
+.book.spread .half.left {
   left: 0;
+  border-radius: 4px 2px 2px 4px;
+  box-shadow: inset -18px 0 34px -26px rgba(0, 0, 0, 0.75);
+}
+
+.book.spread .half.right {
+  right: 0;
+  border-radius: 2px 4px 4px 2px;
+  box-shadow: inset 18px 0 34px -26px rgba(0, 0, 0, 0.75);
+}
+
+.book.single .half.right {
+  border-radius: 4px;
+}
+
+/* 书脊：中间那道压痕 */
+.spine {
+  position: absolute;
   top: 0;
   bottom: 0;
-  width: 30px;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.45), transparent);
-  z-index: 3;
+  left: 50%;
+  width: 56px;
+  transform: translateX(-50%);
   pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.55),
+    rgba(0, 0, 0, 0.18) 30%,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(0, 0, 0, 0.18) 70%,
+    rgba(0, 0, 0, 0.55)
+  );
+  z-index: 2;
+}
+
+/* 书页叠边的厚度感 */
+.half::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px);
+  opacity: 0.55;
+}
+
+.half.left::after {
+  left: 0;
+}
+
+.half.right::after {
+  right: 0;
 }
 
 /* 3D 变换会让 overflow 失效，内容统一放在独立裁剪层 */
@@ -675,7 +793,6 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  border-radius: 3px;
 }
 
 .strip {
@@ -684,15 +801,32 @@ onBeforeUnmount(() => {
 }
 
 .leaf {
-  transform-origin: left center;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  background: var(--paper, #121a26);
   /* 不用 preserve-3d，否则 overflow 裁剪失效，翻页时文字会溢出页外 */
   backface-visibility: hidden;
   transition: transform 0.62s cubic-bezier(0.22, 0.61, 0.36, 1);
   will-change: transform;
   box-shadow:
-    -14px 0 34px rgba(0, 0, 0, 0.55),
+    -16px 0 38px rgba(0, 0, 0, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.05);
   cursor: grab;
+  z-index: 3;
+}
+
+.book.spread .leaf {
+  border-radius: 2px 4px 4px 2px;
+}
+
+.book.spread .leaf.left {
+  border-radius: 4px 2px 2px 4px;
+}
+
+.book.single .leaf {
+  border-radius: 4px;
 }
 
 .leaf.dragging {
@@ -700,19 +834,15 @@ onBeforeUnmount(() => {
   cursor: grabbing;
 }
 
-.page-shade {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.16), transparent 8%, transparent 88%, rgba(0, 0, 0, 0.22));
-  opacity: 0.55;
-}
-
 .page-curl {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background: linear-gradient(90deg, rgba(0, 0, 0, 0.22), transparent 12%);
+}
+
+.leaf.left .page-curl {
+  background: linear-gradient(270deg, rgba(0, 0, 0, 0.22), transparent 12%);
 }
 
 .hit-area {
@@ -908,6 +1038,32 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.seg {
+  display: flex;
+  gap: 6px;
+}
+
+.seg button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--r-line);
+  color: var(--r-fg);
+  font-size: 0.82rem;
+}
+
+.seg button.on {
+  color: var(--r-accent);
+  border-color: var(--r-accent);
+  background: color-mix(in srgb, var(--r-accent) 12%, transparent);
+}
+
+.seg-hint {
+  margin: 8px 0 0;
+  color: var(--r-dim);
+  font-size: 0.72rem;
 }
 
 .stepper span {

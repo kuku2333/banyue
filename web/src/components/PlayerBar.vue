@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useStorage, useWindowSize } from '@vueuse/core'
 import { PLAY_MODES, usePlayerStore } from '@/stores/player'
 import { formatTime } from '@/lib/music'
 import { hashCode } from '@/lib/cover'
 
 const player = usePlayerStore()
 const queueOpen = ref(false)
+const canvasEl = ref<HTMLCanvasElement | null>(null)
+const pos = useStorage('banyue:player:pos', { right: 20, bottom: 20 })
+const { width: windowWidth } = useWindowSize()
+const dragging = ref(false)
 
 const visible = computed(() => Boolean(player.current))
 const artStyle = computed(() => {
@@ -16,6 +21,48 @@ const artStyle = computed(() => {
   }
 })
 const modeInfo = computed(() => PLAY_MODES.find((item) => item.id === player.mode) ?? PLAY_MODES[0]!)
+const playerStyle = computed(() =>
+  windowWidth.value > 767 ? { right: `${pos.value.right}px`, bottom: `${pos.value.bottom}px` } : {},
+)
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max))
+}
+
+let startX = 0
+let startY = 0
+let baseRight = 0
+let baseBottom = 0
+
+function startDrag(event: PointerEvent): void {
+  if ((event.target as HTMLElement).closest('button')) return
+  dragging.value = true
+  startX = event.clientX
+  startY = event.clientY
+  baseRight = pos.value.right
+  baseBottom = pos.value.bottom
+  window.addEventListener('pointermove', onDrag)
+  window.addEventListener('pointerup', endDrag)
+}
+
+function onDrag(event: PointerEvent): void {
+  if (!dragging.value) return
+  pos.value = {
+    right: clamp(baseRight - (event.clientX - startX), 8, window.innerWidth - 180),
+    bottom: clamp(baseBottom - (event.clientY - startY), 8, window.innerHeight - 120),
+  }
+}
+
+function endDrag(): void {
+  dragging.value = false
+  window.removeEventListener('pointermove', onDrag)
+  window.removeEventListener('pointerup', endDrag)
+}
+
+function onWheel(event: WheelEvent): void {
+  const step = event.deltaY < 0 ? 0.05 : -0.05
+  player.setVolume(player.volume + step)
+}
 
 function onSeek(event: MouseEvent): void {
   const target = event.currentTarget as HTMLElement
@@ -26,16 +73,71 @@ function onSeek(event: MouseEvent): void {
 function onVolume(event: Event): void {
   player.setVolume(Number((event.target as HTMLInputElement).value))
 }
+
+/* ---------- 频谱律动 ---------- */
+
+let raf = 0
+const spectrum = new Uint8Array(64)
+
+function drawSpectrum(): void {
+  raf = requestAnimationFrame(drawSpectrum)
+  const canvas = canvasEl.value
+  if (!canvas) return
+  const context = canvas.getContext('2d')
+  if (!context) return
+  const { width, height } = canvas
+  context.clearRect(0, 0, width, height)
+
+  const analyser = player.analyser
+  if (analyser) analyser.getByteFrequencyData(spectrum)
+
+  const bars = 36
+  const gap = 2
+  const barWidth = (width - gap * (bars - 1)) / bars
+  const gradient = context.createLinearGradient(0, height, width, 0)
+  gradient.addColorStop(0, 'rgba(94, 234, 212, 0.85)')
+  gradient.addColorStop(1, 'rgba(125, 211, 252, 0.85)')
+  context.fillStyle = gradient
+
+  const t = performance.now() / 600
+  for (let i = 0; i < bars; i++) {
+    const raw = analyser && player.playing ? (spectrum[i] ?? 0) / 255 : 0
+    // 没有频谱数据时也给一点缓慢呼吸，避免完全静止
+    const idle = 0.08 + 0.04 * Math.sin(t + i * 0.4)
+    const level = Math.max(idle, raw ** 1.3)
+    const barHeight = Math.max(2, level * height)
+    const x = i * (barWidth + gap)
+    context.beginPath()
+    context.roundRect(x, height - barHeight, barWidth, barHeight, barWidth / 2)
+    context.fill()
+  }
+}
+
+onMounted(() => {
+  raf = requestAnimationFrame(drawSpectrum)
+})
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(raf)
+  endDrag()
+})
 </script>
 
 <template>
   <Transition name="player">
-    <aside v-if="visible" class="player" :class="{ collapsed: player.collapsed }">
+    <aside
+      v-if="visible"
+      class="player"
+      :class="{ collapsed: player.collapsed, dragging }"
+      :style="playerStyle"
+      @wheel.prevent="onWheel"
+    >
       <button
         v-if="player.collapsed"
         type="button"
         class="capsule"
         :aria-label="player.playing ? '暂停' : '播放'"
+        @pointerdown="startDrag"
         @click="player.collapsed = false"
       >
         <span class="pulse" :class="{ on: player.playing }" />
@@ -60,7 +162,7 @@ function onVolume(event: Event): void {
           </ol>
         </div>
 
-        <div class="p-head">
+        <div class="p-head" :data-analyser="player.analyser ? 'on' : 'off'" @pointerdown="startDrag">
           <div class="p-art" :style="artStyle">
             <span v-if="!player.current?.art">♪</span>
             <img v-else :src="player.current.art" alt="" loading="lazy" />
@@ -87,6 +189,8 @@ function onVolume(event: Event): void {
             </svg>
           </button>
         </div>
+
+        <canvas ref="canvasEl" class="p-spectrum" width="600" height="56" aria-hidden="true" />
 
         <div
           class="p-bar"
@@ -154,6 +258,23 @@ function onVolume(event: Event): void {
   backdrop-filter: blur(18px) saturate(140%);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
   color: var(--text);
+}
+
+.player.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.p-spectrum {
+  width: 100%;
+  height: 28px;
+  margin: 10px 0 2px;
+  opacity: 0.9;
+}
+
+.p-head {
+  cursor: grab;
+  touch-action: none;
 }
 
 .player.collapsed {

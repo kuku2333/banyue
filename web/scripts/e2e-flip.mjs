@@ -25,7 +25,7 @@ function makeBook() {
   const chapters = []
   for (let c = 1; c <= 4; c++) {
     const paragraphs = []
-    for (let p = 0; p < 14; p++) {
+    for (let p = 0; p < 30; p++) {
       paragraphs.push(SENTENCES[(c + p) % SENTENCES.length] + SENTENCES[(c + p + 3) % SENTENCES.length])
     }
     chapters.push(`第${c}章 第${c}个下午\n\n${paragraphs.join('\n\n')}`)

@@ -3,6 +3,7 @@ import { useStorage } from '@vueuse/core'
 
 export type ReaderTheme = 'ink' | 'paper' | 'green' | 'night'
 export type ReaderMode = 'scroll' | 'paged'
+export type ReaderLayout = 'single' | 'spread'
 
 export const READER_THEMES: { id: ReaderTheme; name: string; hint: string }[] = [
   { id: 'ink', name: '墨', hint: '深色 · 低对比' },
@@ -14,6 +15,7 @@ export const READER_THEMES: { id: ReaderTheme; name: string; hint: string }[] = 
 export const useReaderStore = defineStore('reader', () => {
   const theme = useStorage<ReaderTheme>('banyue:reader:theme', 'ink')
   const mode = useStorage<ReaderMode>('banyue:reader:mode', 'paged')
+  const layout = useStorage<ReaderLayout>('banyue:reader:layout', 'spread')
   const fontSize = useStorage<number>('banyue:reader:font-size', 19)
   const lineHeight = useStorage<number>('banyue:reader:line-height', 1.9)
   const columnWidth = useStorage<number>('banyue:reader:width', 38)
@@ -34,5 +36,16 @@ export const useReaderStore = defineStore('reader', () => {
     columnWidth.value = Math.min(52, Math.max(26, columnWidth.value + delta))
   }
 
-  return { theme, mode, fontSize, lineHeight, columnWidth, setTheme, bumpFont, bumpLineHeight, bumpWidth }
+  return {
+    theme,
+    mode,
+    layout,
+    fontSize,
+    lineHeight,
+    columnWidth,
+    setTheme,
+    bumpFont,
+    bumpLineHeight,
+    bumpWidth,
+  }
 })

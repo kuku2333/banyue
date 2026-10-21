@@ -24,6 +24,7 @@ const browserGlobals = {
   MouseEvent: 'readonly',
   DragEvent: 'readonly',
   PointerEvent: 'readonly',
+  WheelEvent: 'readonly',
   Event: 'readonly',
   File: 'readonly',
   FileList: 'readonly',
