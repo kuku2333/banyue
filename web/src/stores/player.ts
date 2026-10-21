@@ -4,6 +4,14 @@ import { useStorage } from '@vueuse/core'
 import type { Track } from '@/lib/music'
 import { resolvePreview } from '@/lib/music'
 
+export type PlayMode = 'order' | 'repeat' | 'shuffle'
+
+export const PLAY_MODES: { id: PlayMode; label: string; icon: string }[] = [
+  { id: 'order', label: '顺序播放', icon: '→' },
+  { id: 'repeat', label: '单曲循环', icon: '↻' },
+  { id: 'shuffle', label: '随机播放', icon: '⇄' },
+]
+
 export const usePlayerStore = defineStore('player', () => {
   const queue = ref<Track[]>([])
   const index = ref(-1)
@@ -14,6 +22,8 @@ export const usePlayerStore = defineStore('player', () => {
   const error = ref('')
   const loading = ref(false)
   const favorites = useStorage<Track[]>('banyue:favorites', [])
+  const mode = useStorage<PlayMode>('banyue:player:mode', 'order')
+  const volume = useStorage<number>('banyue:player:volume', 0.8)
 
   let audio: HTMLAudioElement | null = null
   let objectUrl: string | null = null
@@ -27,6 +37,7 @@ export const usePlayerStore = defineStore('player', () => {
     if (audio) return audio
     const element = new Audio()
     element.preload = 'metadata'
+    element.volume = volume.value
     element.addEventListener('timeupdate', () => {
       currentTime.value = element.currentTime
     })
@@ -40,7 +51,7 @@ export const usePlayerStore = defineStore('player', () => {
       playing.value = false
     })
     element.addEventListener('ended', () => {
-      void next()
+      void advance()
     })
     element.addEventListener('error', () => {
       playing.value = false
@@ -132,6 +143,64 @@ export const usePlayerStore = defineStore('player', () => {
     await load(queue.value[index.value]!)
   }
 
+  /** 一首播完之后的行为：单曲循环 / 随机 / 顺序 */
+  async function advance(): Promise<void> {
+    if (!current.value) return
+    if (mode.value === 'repeat') {
+      const element = ensureAudio()
+      element.currentTime = 0
+      await element.play()
+      return
+    }
+    if (mode.value === 'shuffle' && queue.value.length > 1) {
+      let target = index.value
+      while (target === index.value) target = Math.floor(Math.random() * queue.value.length)
+      index.value = target
+      await load(queue.value[index.value]!)
+      return
+    }
+    if (hasNext.value) {
+      await next()
+      return
+    }
+    playing.value = false
+  }
+
+  function jumpTo(target: number): void {
+    const track = queue.value[target]
+    if (!track) return
+    index.value = target
+    void load(track)
+  }
+
+  function removeAt(target: number): void {
+    if (target < 0 || target >= queue.value.length) return
+    const wasCurrent = target === index.value
+    queue.value.splice(target, 1)
+    if (!queue.value.length) {
+      close()
+      return
+    }
+    if (target < index.value) index.value--
+    else if (wasCurrent) {
+      index.value = Math.min(index.value, queue.value.length - 1)
+      void load(queue.value[index.value]!)
+      return
+    }
+    index.value = Math.min(index.value, queue.value.length - 1)
+  }
+
+  function cycleMode(): void {
+    const order = PLAY_MODES.map((item) => item.id)
+    mode.value = order[(order.indexOf(mode.value) + 1) % order.length]!
+  }
+
+  function setVolume(value: number): void {
+    volume.value = Math.min(1, Math.max(0, value))
+    const element = ensureAudio()
+    element.volume = volume.value
+  }
+
   function seek(ratio: number): void {
     const element = ensureAudio()
     if (!duration.value) return
@@ -171,6 +240,8 @@ export const usePlayerStore = defineStore('player', () => {
     error,
     loading,
     favorites,
+    mode,
+    volume,
     current,
     progress,
     hasNext,
@@ -180,6 +251,11 @@ export const usePlayerStore = defineStore('player', () => {
     toggle,
     next,
     prev,
+    advance,
+    jumpTo,
+    removeAt,
+    cycleMode,
+    setVolume,
     seek,
     close,
     isFavorite,

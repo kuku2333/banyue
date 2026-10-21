@@ -87,7 +87,10 @@ await send('Page.navigate', { url })
 await new Promise((resolve) => setTimeout(resolve, 2500))
 
 if (clickSelector) {
-  await send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(clickSelector)})?.click()` })
+  for (const selector of clickSelector.split('|')) {
+    await send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(selector)})?.click()` })
+    await new Promise((resolve) => setTimeout(resolve, 400))
+  }
   await new Promise((resolve) => setTimeout(resolve, waitAfterClick))
 }
 

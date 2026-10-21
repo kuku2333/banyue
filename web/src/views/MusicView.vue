@@ -307,9 +307,20 @@ onMounted(() => {
     <section v-else-if="tab === 'favs'" class="panel">
       <div class="row-head">
         <span class="muted small">共 {{ player.favorites.length }} 首</span>
-        <button type="button" class="btn small-btn" :disabled="!player.favorites.length" @click="playFrom(player.favorites, 0)">
-          播放全部
-        </button>
+        <div class="head-actions">
+          <button
+            type="button"
+            class="btn small-btn"
+            :disabled="!player.favorites.length && !localTracks.length"
+            title="播放顺序：收藏 → 本地"
+            @click="playFrom([...player.favorites, ...localTracks], 0)"
+          >
+            收藏 + 本地一起播
+          </button>
+          <button type="button" class="btn small-btn" :disabled="!player.favorites.length" @click="playFrom(player.favorites, 0)">
+            播放全部
+          </button>
+        </div>
       </div>
       <ol v-if="player.favorites.length" class="track-list">
         <li v-for="(track, index) in player.favorites" :key="track.id" :class="{ playing: isCurrent(track) }">
@@ -387,6 +398,11 @@ onMounted(() => {
 .small-btn {
   padding: 6px 14px;
   font-size: 0.8rem;
+}
+
+.head-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .track-list {

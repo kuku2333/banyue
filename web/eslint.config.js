@@ -22,6 +22,7 @@ const browserGlobals = {
   KeyboardEvent: 'readonly',
   MouseEvent: 'readonly',
   DragEvent: 'readonly',
+  PointerEvent: 'readonly',
   Event: 'readonly',
   File: 'readonly',
   FileList: 'readonly',

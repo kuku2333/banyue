@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { usePlayerStore } from '@/stores/player'
+import { PLAY_MODES, usePlayerStore } from '@/stores/player'
 import { formatTime } from '@/lib/music'
 import { hashCode } from '@/lib/cover'
 
 const player = usePlayerStore()
-const dragStart = ref(false)
+const queueOpen = ref(false)
 
 const visible = computed(() => Boolean(player.current))
 const artStyle = computed(() => {
@@ -15,11 +15,16 @@ const artStyle = computed(() => {
     background: `linear-gradient(150deg, hsl(${hue} 70% 46% / .85), hsl(${hue + 42} 76% 58% / .55))`,
   }
 })
+const modeInfo = computed(() => PLAY_MODES.find((item) => item.id === player.mode) ?? PLAY_MODES[0]!)
 
 function onSeek(event: MouseEvent): void {
   const target = event.currentTarget as HTMLElement
   const rect = target.getBoundingClientRect()
   player.seek((event.clientX - rect.left) / rect.width)
+}
+
+function onVolume(event: Event): void {
+  player.setVolume(Number((event.target as HTMLInputElement).value))
 }
 </script>
 
@@ -38,6 +43,23 @@ function onSeek(event: MouseEvent): void {
       </button>
 
       <template v-else>
+        <div v-if="queueOpen" class="queue-panel">
+          <header>
+            <b>播放队列</b>
+            <span>{{ player.queue.length }} 首 · {{ modeInfo.label }}</span>
+            <button type="button" class="p-icon" aria-label="关闭队列" @click="queueOpen = false">×</button>
+          </header>
+          <ol>
+            <li v-for="(track, i) in player.queue" :key="`${track.id}-${i}`" :class="{ on: i === player.index }">
+              <button type="button" class="q-main" @click="player.jumpTo(i)">
+                <b>{{ track.title }}</b>
+                <span>{{ track.artist || (track.local ? '本地文件' : '') }}</span>
+              </button>
+              <button type="button" class="q-del" aria-label="从队列移除" @click="player.removeAt(i)">×</button>
+            </li>
+          </ol>
+        </div>
+
         <div class="p-head">
           <div class="p-art" :style="artStyle">
             <span v-if="!player.current?.art">♪</span>
@@ -48,6 +70,12 @@ function onSeek(event: MouseEvent): void {
             <b>{{ player.current?.title }}</b>
             <span>{{ player.current?.artist || '未知歌手' }}</span>
           </div>
+          <button type="button" class="p-icon" :class="{ on: queueOpen }" aria-label="播放队列" @click="queueOpen = !queueOpen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+              <path d="M4 7h12M4 12h12M4 17h8" />
+              <path d="M18 9v8l3-2" />
+            </svg>
+          </button>
           <button type="button" class="p-icon" aria-label="收起播放器" @click="player.collapsed = true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
               <path d="M6 12h12" />
@@ -60,9 +88,15 @@ function onSeek(event: MouseEvent): void {
           </button>
         </div>
 
-        <div class="p-bar" role="slider" :aria-valuenow="Math.round(player.progress * 100)" aria-valuemin="0" aria-valuemax="100" @click="onSeek">
+        <div
+          class="p-bar"
+          role="slider"
+          :aria-valuenow="Math.round(player.progress * 100)"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          @click="onSeek"
+        >
           <i :style="{ width: `${player.progress * 100}%` }" />
-          <span v-if="dragStart" class="p-time">{{ formatTime(player.currentTime) }}</span>
         </div>
 
         <div class="p-controls">
@@ -81,17 +115,23 @@ function onSeek(event: MouseEvent): void {
               <path d="M5 4l10 8-10 8z" /><path d="M19 5v14" />
             </svg>
           </button>
-          <button
-            type="button"
-            class="p-icon p-fav"
-            :class="{ on: player.current ? player.isFavorite(player.current.id) : false }"
-            aria-label="收藏"
-            @click="player.current && player.toggleFavorite(player.current)"
-          >
+          <button type="button" class="p-icon p-fav" :class="{ on: player.current ? player.isFavorite(player.current.id) : false }" aria-label="收藏" @click="player.current && player.toggleFavorite(player.current)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
               <path d="M12 4.6l2.3 4.7 5.2.8-3.8 3.6.9 5.1-4.6-2.4-4.6 2.4.9-5.1L4.5 10l5.2-.8z" />
             </svg>
           </button>
+        </div>
+
+        <div class="p-extra">
+          <button type="button" class="p-mode" :title="modeInfo.label" @click="player.cycleMode()">
+            <span aria-hidden="true">{{ modeInfo.icon }}</span>{{ modeInfo.label }}
+          </button>
+          <label class="p-vol">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 9v6h4l5 4V5L8 9z" /><path d="M17 8.5a5 5 0 010 7" />
+            </svg>
+            <input type="range" min="0" max="1" step="0.01" :value="player.volume" aria-label="音量" @input="onVolume" />
+          </label>
         </div>
 
         <p v-if="player.error" class="p-error">{{ player.error }}</p>
@@ -106,11 +146,11 @@ function onSeek(event: MouseEvent): void {
   right: 20px;
   bottom: 20px;
   z-index: 85;
-  width: 300px;
+  width: 320px;
   padding: 14px;
   border-radius: 18px;
   border: 1px solid var(--line-strong);
-  background: rgba(14, 20, 27, 0.92);
+  background: rgba(14, 20, 27, 0.94);
   backdrop-filter: blur(18px) saturate(140%);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
   color: var(--text);
@@ -148,7 +188,6 @@ function onSeek(event: MouseEvent): void {
 
 .pulse.on {
   background: var(--accent);
-  box-shadow: 0 0 0 0 rgba(94, 234, 212, 0.6);
   animation: pulse 1.6s infinite;
 }
 
@@ -162,6 +201,97 @@ function onSeek(event: MouseEvent): void {
   100% {
     box-shadow: 0 0 0 0 rgba(94, 234, 212, 0);
   }
+}
+
+.queue-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  max-height: 280px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: rgba(14, 20, 27, 0.98);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.queue-panel header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.queue-panel header b {
+  font-size: 0.82rem;
+}
+
+.queue-panel header span {
+  margin-right: auto;
+  color: var(--dim);
+  font-size: 0.72rem;
+}
+
+.queue-panel ol {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.queue-panel li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+}
+
+.queue-panel li.on {
+  background: var(--accent-soft);
+}
+
+.q-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6px 8px;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.q-main b {
+  font-size: 0.78rem;
+  font-weight: 500;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.q-main span {
+  color: var(--dim);
+  font-size: 0.68rem;
+}
+
+.q-del {
+  padding: 4px 8px;
+  color: var(--dim);
+  font-size: 0.8rem;
+  opacity: 0;
+}
+
+.queue-panel li:hover .q-del {
+  opacity: 1;
+}
+
+.q-del:hover {
+  color: var(--danger);
 }
 
 .p-head {
@@ -193,15 +323,13 @@ function onSeek(event: MouseEvent): void {
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  border: 1px solid rgba(94, 234, 212, 0.35);
+  border: 1px dashed rgba(94, 234, 212, 0.35);
   opacity: 0;
-  transition: opacity 0.2s;
 }
 
 .p-ring.on {
   opacity: 1;
   animation: spin 6s linear infinite;
-  border-style: dashed;
 }
 
 @keyframes spin {
@@ -257,7 +385,7 @@ function onSeek(event: MouseEvent): void {
   gap: 6px;
 }
 
-.p-controls .p-time {
+.p-time {
   color: var(--dim);
   font-size: 0.68rem;
   font-variant-numeric: tabular-nums;
@@ -278,17 +406,14 @@ function onSeek(event: MouseEvent): void {
   height: 16px;
 }
 
-.p-icon:hover:not(:disabled) {
+.p-icon:hover:not(:disabled),
+.p-icon.on {
   color: var(--accent);
   background: var(--accent-soft);
 }
 
 .p-icon:disabled {
   opacity: 0.3;
-}
-
-.p-icon.on {
-  color: var(--accent);
 }
 
 .p-main {
@@ -304,6 +429,51 @@ function onSeek(event: MouseEvent): void {
 .p-main svg {
   width: 18px;
   height: 18px;
+}
+
+.p-extra {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.p-mode {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 0.72rem;
+}
+
+.p-mode span {
+  margin-right: 6px;
+  color: var(--accent);
+}
+
+.p-mode:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
+.p-vol {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--dim);
+}
+
+.p-vol svg {
+  width: 14px;
+  height: 14px;
+}
+
+.p-vol input {
+  width: 74px;
+  accent-color: var(--accent);
 }
 
 .p-error {
