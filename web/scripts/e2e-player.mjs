@@ -154,12 +154,34 @@ const afterDrag = await evaluate("(() => { const r = document.querySelector('.pl
 console.log('player box before x/y:', Math.round(box.left), '| after drag left/top:', afterDrag.left, afterDrag.top)
 await shot('player-dragged')
 
-// 收起 / 展开
+// 收起成圆球（带律动），再点开
+if ((await evaluate("document.querySelector('.p-main')?.getAttribute('aria-label')")) === '播放') {
+  await evaluate("document.querySelector('.p-main')?.click()")
+  await wait(1200)
+}
 await evaluate("document.querySelector('.p-head [aria-label=\"收起播放器\"]')?.click()")
-await wait(500)
-await shot('player-capsule')
-await evaluate("document.querySelector('.capsule')?.click()")
-await wait(500)
+await wait(900)
+await shot('player-orb')
+const orbBox = await evaluate("(() => { const r = document.querySelector('.orb').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, left: Math.round(r.left), top: Math.round(r.top) }; })()")
+
+// 收起状态也能拖动
+await mouse('mousePressed', orbBox.x, orbBox.y)
+await mouse('mouseMoved', orbBox.x - 160, orbBox.y - 90)
+await wait(100)
+await mouse('mouseReleased', orbBox.x - 160, orbBox.y - 90)
+await wait(400)
+const orbAfterDrag = await evaluate("(() => { const r = document.querySelector('.orb')?.getBoundingClientRect(); return r ? { left: Math.round(r.left), top: Math.round(r.top) } : null })()")
+console.log('orb drag:', orbBox.left + ',' + orbBox.top, '→', orbAfterDrag?.left + ',' + orbAfterDrag?.top)
+await shot('player-orb-dragged')
+
+// 点一下圆球展开
+const orb2 = await evaluate("(() => { const r = document.querySelector('.orb').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()")
+await mouse('mousePressed', orb2.x, orb2.y)
+await mouse('mouseReleased', orb2.x, orb2.y)
+await wait(700)
+const expanded = await evaluate("Boolean(document.querySelector('.player')) && !document.querySelector('.orb')")
+console.log('click orb expands:', expanded)
+await shot('player-expanded-again')
 
 console.log('done')
 socket.close()

@@ -46,7 +46,8 @@ const chapter = computed(() => chapters.value[chapterIndex.value] ?? null)
 const paragraphs = computed(() => (chapter.value ? toParagraphs(chapter.value.content) : []))
 const overallProgress = computed(() => {
   if (!chapters.value.length) return 0
-  const within = settings.mode === 'paged' ? pageIndex.value / Math.max(pageCount.value, 1) : scrollRatio.value
+  const within =
+    settings.mode === 'paged' ? pageIndex.value / Math.max(pageCount.value, 1) : scrollRatio.value
   return Math.min(1, (chapterIndex.value + within) / chapters.value.length)
 })
 const themeClass = computed(() => `theme-${settings.theme}`)
@@ -57,9 +58,7 @@ const contentStyle = computed(() => ({
 
 /** 版心设置换算成列宽，并受视口限制 */
 const preferredColumnPx = computed(() => settings.columnWidth * 16)
-const bookWidth = computed(() =>
-  layout.value === 'spread' ? pageWidth.value * 2 + GUTTER : pageWidth.value,
-)
+const bookWidth = computed(() => (layout.value === 'spread' ? pageWidth.value * 2 + GUTTER : pageWidth.value))
 const halfLeftStyle = computed(() => ({ width: `${pageWidth.value}px`, left: '0px' }))
 const halfRightStyle = computed(() =>
   layout.value === 'spread'
@@ -96,9 +95,7 @@ const leafPage = computed(() => {
 })
 
 const leafVisible = computed(() => Boolean(flipping.value))
-const leafOnLeft = computed(
-  () => layout.value === 'spread' && flipping.value?.dir === 'bwd',
-)
+const leafOnLeft = computed(() => layout.value === 'spread' && flipping.value?.dir === 'bwd')
 
 const leafStyle = computed(() => ({
   transform: `rotateY(${angle.value}deg)`,
@@ -121,7 +118,8 @@ function scheduleSave(): void {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     if (!book.value) return
-    const offset = settings.mode === 'paged' ? pageIndex.value / Math.max(pageCount.value, 1) : scrollRatio.value
+    const offset =
+      settings.mode === 'paged' ? pageIndex.value / Math.max(pageCount.value, 1) : scrollRatio.value
     void saveProgress(book.value.id, chapterIndex.value, offset, overallProgress.value)
   }, 600)
 }
@@ -158,10 +156,12 @@ async function loadBook(): Promise<void> {
   await nextTick()
   await measurePages()
   if (result.book.lastOffset) {
-    if (settings.mode === 'paged') pageIndex.value = Math.round(result.book.lastOffset * (pageCount.value - 1))
+    if (settings.mode === 'paged')
+      pageIndex.value = Math.round(result.book.lastOffset * (pageCount.value - 1))
     else {
       const viewport = viewportEl.value
-      if (viewport) viewport.scrollTop = result.book.lastOffset * (viewport.scrollHeight - viewport.clientHeight)
+      if (viewport)
+        viewport.scrollTop = result.book.lastOffset * (viewport.scrollHeight - viewport.clientHeight)
     }
   }
 }
@@ -303,10 +303,15 @@ function onPointerUp(): void {
   }
   const done = progressFor(dragDir, angle.value) > 0.28
   angle.value = angleFor(dragDir, done ? 1 : 0)
-  flipTimer = setTimeout(done ? commitFlip : () => {
-    flipping.value = null
-    angle.value = 0
-  }, FLIP_MS * 0.55)
+  flipTimer = setTimeout(
+    done
+      ? commitFlip
+      : () => {
+          flipping.value = null
+          angle.value = 0
+        },
+    FLIP_MS * 0.55,
+  )
   dragDir = null
   setTimeout(() => (suppressClick = false), 60)
 }
@@ -373,11 +378,14 @@ function onResize(): void {
   if (settings.mode === 'paged') measurePages()
 }
 
-watch(() => settings.mode, async () => {
-  await nextTick()
-  if (settings.mode === 'paged') measurePages(true)
-  else viewportEl.value?.scrollTo({ top: 0 })
-})
+watch(
+  () => settings.mode,
+  async () => {
+    await nextTick()
+    if (settings.mode === 'paged') measurePages(true)
+    else viewportEl.value?.scrollTo({ top: 0 })
+  },
+)
 
 watch([() => settings.fontSize, () => settings.columnWidth, () => settings.lineHeight], async () => {
   await nextTick()
@@ -395,7 +403,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
   if (saveTimer) clearTimeout(saveTimer)
   if (book.value) {
-    const offset = settings.mode === 'paged' ? pageIndex.value / Math.max(pageCount.value, 1) : scrollRatio.value
+    const offset =
+      settings.mode === 'paged' ? pageIndex.value / Math.max(pageCount.value, 1) : scrollRatio.value
     void saveProgress(book.value.id, chapterIndex.value, offset, overallProgress.value)
   }
 })
@@ -418,16 +427,18 @@ onBeforeUnmount(() => {
       </div>
       <div class="r-actions">
         <button type="button" class="r-btn" :class="{ on: tocOpen }" @click="tocOpen = !tocOpen">目录</button>
-        <button type="button" class="r-btn" :class="{ on: settingsOpen }" @click="settingsOpen = !settingsOpen">设置</button>
+        <button
+          type="button"
+          class="r-btn"
+          :class="{ on: settingsOpen }"
+          @click="settingsOpen = !settingsOpen"
+        >
+          设置
+        </button>
       </div>
     </header>
 
-    <div
-      ref="viewportEl"
-      class="reader-viewport"
-      :class="settings.mode"
-      @scroll.passive="onScroll"
-    >
+    <div ref="viewportEl" class="reader-viewport" :class="settings.mode" @scroll.passive="onScroll">
       <div
         v-if="settings.mode === 'paged'"
         class="book"
@@ -482,7 +493,12 @@ onBeforeUnmount(() => {
 
         <div class="hit-area">
           <button type="button" class="tap left" aria-label="上一页" @click="tapTurn(-1)" />
-          <button type="button" class="tap mid" aria-label="显示/隐藏工具栏" @click="chromeVisible = !chromeVisible" />
+          <button
+            type="button"
+            class="tap mid"
+            aria-label="显示/隐藏工具栏"
+            @click="chromeVisible = !chromeVisible"
+          />
           <button type="button" class="tap right" aria-label="下一页" @click="tapTurn(1)" />
         </div>
       </div>
@@ -496,13 +512,20 @@ onBeforeUnmount(() => {
     </div>
 
     <footer class="reader-foot">
-      <button type="button" class="r-btn" :disabled="chapterIndex === 0 && pageIndex === 0" @click="turn(-1)">上一页</button>
+      <button type="button" class="r-btn" :disabled="chapterIndex === 0 && pageIndex === 0" @click="turn(-1)">
+        上一页
+      </button>
       <div class="r-progress">
         <i :style="{ width: `${overallProgress * 100}%` }" />
         <span>{{ Math.round(overallProgress * 100) }}%</span>
       </div>
       <span v-if="settings.mode === 'paged'" class="r-pages">{{ pageIndex + 1 }} / {{ pageCount }}</span>
-      <button type="button" class="r-btn" :disabled="chapterIndex === chapters.length - 1 && pageIndex >= pageCount - 1" @click="turn(1)">
+      <button
+        type="button"
+        class="r-btn"
+        :disabled="chapterIndex === chapters.length - 1 && pageIndex >= pageCount - 1"
+        @click="turn(1)"
+      >
         下一页
       </button>
     </footer>
@@ -551,16 +574,36 @@ onBeforeUnmount(() => {
         <section>
           <h4>翻页方式</h4>
           <div class="seg">
-            <button type="button" :class="{ on: settings.mode === 'paged' }" @click="settings.mode = 'paged'">翻页</button>
-            <button type="button" :class="{ on: settings.mode === 'scroll' }" @click="settings.mode = 'scroll'">滚动</button>
+            <button type="button" :class="{ on: settings.mode === 'paged' }" @click="settings.mode = 'paged'">
+              翻页
+            </button>
+            <button
+              type="button"
+              :class="{ on: settings.mode === 'scroll' }"
+              @click="settings.mode = 'scroll'"
+            >
+              滚动
+            </button>
           </div>
         </section>
 
         <section>
           <h4>版式</h4>
           <div class="seg">
-            <button type="button" :class="{ on: settings.layout === 'spread' }" @click="settings.layout = 'spread'">左右对开</button>
-            <button type="button" :class="{ on: settings.layout === 'single' }" @click="settings.layout = 'single'">单页</button>
+            <button
+              type="button"
+              :class="{ on: settings.layout === 'spread' }"
+              @click="settings.layout = 'spread'"
+            >
+              左右对开
+            </button>
+            <button
+              type="button"
+              :class="{ on: settings.layout === 'single' }"
+              @click="settings.layout = 'single'"
+            >
+              单页
+            </button>
           </div>
           <p class="seg-hint">屏幕较窄时自动使用单页。</p>
         </section>
@@ -723,76 +766,172 @@ onBeforeUnmount(() => {
   perspective: 2600px;
   perspective-origin: 50% 50%;
   touch-action: pan-y;
+  filter: drop-shadow(0 26px 32px rgba(0, 0, 0, 0.45));
 }
 
-/* 对开时左右各占一半，中间留出书脊 */
+/* 书壳：书页四周露出来的那一圈「装订」 */
+.book::before {
+  content: '';
+  position: absolute;
+  inset: -18px -26px -24px;
+  border-radius: 14px;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.015) 0 2px, transparent 2px 4px),
+    linear-gradient(150deg, #2a3646 0%, #17202b 46%, #090e14 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.7),
+    0 26px 50px -22px rgba(0, 0, 0, 0.85);
+  z-index: 0;
+}
+
+/* 书底下的投影 */
+.book::after {
+  content: '';
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: -40px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(50% 100% at 50% 0%, rgba(0, 0, 0, 0.5), transparent 72%);
+  filter: blur(6px);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* 对开时左右各占一半，中间是书脊 */
 .half {
   position: absolute;
   top: 0;
   bottom: 0;
-  overflow: hidden;
-  background: var(--paper, #121a26);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.04) 52%, rgba(0, 0, 0, 0.1)),
+    var(--paper, #121a26);
   border-radius: 3px;
-}
-
-.book.spread .half {
-  box-shadow: inset 0 0 40px -26px rgba(0, 0, 0, 0.7);
+  z-index: 1;
 }
 
 .book.spread .half.left {
   left: 0;
-  border-radius: 4px 2px 2px 4px;
-  box-shadow: inset -18px 0 34px -26px rgba(0, 0, 0, 0.75);
+  border-radius: 5px 1px 1px 5px;
+  box-shadow:
+    inset -22px 0 36px -26px rgba(0, 0, 0, 0.85),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .book.spread .half.right {
   right: 0;
-  border-radius: 2px 4px 4px 2px;
-  box-shadow: inset 18px 0 34px -26px rgba(0, 0, 0, 0.75);
+  border-radius: 1px 5px 5px 1px;
+  box-shadow:
+    inset 22px 0 36px -26px rgba(0, 0, 0, 0.85),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .book.single .half.right {
-  border-radius: 4px;
+  border-radius: 5px;
+  box-shadow:
+    inset 0 0 26px -18px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-/* 书脊：中间那道压痕 */
+/* 书页叠边：外侧露出一叠纸的厚度 */
+.book.spread .half::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  width: 7px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.12) 0 1px,
+    rgba(0, 0, 0, 0.16) 1px 2px,
+    transparent 2px 4px
+  );
+  opacity: 0.75;
+  z-index: -1;
+}
+
+.book.spread .half.left::after {
+  left: -7px;
+  border-radius: 4px 0 0 4px;
+}
+
+.book.spread .half.right::after {
+  right: -7px;
+  border-radius: 0 4px 4px 0;
+}
+
+/* 上下书口：书页叠起来的那条线 */
+.book.spread .half::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  height: 5px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.1) 0 1px,
+    rgba(0, 0, 0, 0.14) 1px 2px,
+    transparent 2px 4px
+  );
+  opacity: 0.55;
+  z-index: -1;
+}
+
+.book.spread .half.left::before,
+.book.spread .half.right::before {
+  top: -5px;
+}
+
+/* 书脊：中间的凹陷与压痕 */
 .spine {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: -3px;
+  bottom: -3px;
   left: 50%;
-  width: 56px;
+  width: 54px;
   transform: translateX(-50%);
   pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0.55),
-    rgba(0, 0, 0, 0.18) 30%,
-    rgba(255, 255, 255, 0.05) 50%,
-    rgba(0, 0, 0, 0.18) 70%,
-    rgba(0, 0, 0, 0.55)
-  );
+  border-radius: 3px;
+  background:
+    radial-gradient(140% 70% at 50% 50%, rgba(255, 255, 255, 0.06), transparent 62%),
+    linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.82),
+      rgba(0, 0, 0, 0.42) 18%,
+      #0b1017 48%,
+      #0b1017 52%,
+      rgba(0, 0, 0, 0.42) 82%,
+      rgba(0, 0, 0, 0.82)
+    );
+  box-shadow:
+    inset 0 0 30px rgba(0, 0, 0, 0.85),
+    0 0 0 1px rgba(255, 255, 255, 0.03);
   z-index: 2;
 }
 
-/* 书页叠边的厚度感 */
-.half::after {
+/* 书页在书脊处的弯曲阴影 */
+.spine::before,
+.spine::after {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 6px;
+  width: 26px;
   pointer-events: none;
-  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px);
-  opacity: 0.55;
 }
 
-.half.left::after {
-  left: 0;
+.spine::before {
+  left: -26px;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.4));
 }
 
-.half.right::after {
-  right: 0;
+.spine::after {
+  right: -26px;
+  background: linear-gradient(270deg, transparent, rgba(0, 0, 0, 0.4));
 }
 
 /* 3D 变换会让 overflow 失效，内容统一放在独立裁剪层 */
@@ -812,20 +951,26 @@ onBeforeUnmount(() => {
   top: 0;
   bottom: 0;
   overflow: hidden;
-  background: var(--paper, #121a26);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.05) 60%, rgba(0, 0, 0, 0.12)),
+    var(--paper, #121a26);
   /* 不用 preserve-3d，否则 overflow 裁剪失效，翻页时文字会溢出页外 */
   backface-visibility: hidden;
   transition: transform 0.62s cubic-bezier(0.22, 0.61, 0.36, 1);
   will-change: transform;
   box-shadow:
-    -16px 0 38px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
+    -18px 0 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
   cursor: grab;
   z-index: 3;
 }
 
 .book.spread .leaf {
-  border-radius: 2px 4px 4px 2px;
+  border-radius: 1px 5px 5px 1px;
+}
+
+.book.spread .leaf.left {
+  border-radius: 5px 1px 1px 5px;
 }
 
 .book.spread .leaf.left {
@@ -855,6 +1000,7 @@ onBeforeUnmount(() => {
 .hit-area {
   position: absolute;
   inset: 0;
+  z-index: 4;
   display: grid;
   grid-template-columns: 26% 48% 26%;
 }
@@ -1089,7 +1235,9 @@ onBeforeUnmount(() => {
 
 .drawer-enter-active,
 .drawer-leave-active {
-  transition: transform 0.24s ease, opacity 0.24s ease;
+  transition:
+    transform 0.24s ease,
+    opacity 0.24s ease;
 }
 
 .drawer-enter-from,
