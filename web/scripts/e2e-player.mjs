@@ -107,6 +107,25 @@ await wait(600)
 const stateResumed = await evaluate("document.querySelector('.p-main')?.getAttribute('aria-label')")
 console.log('space toggle:', stateBefore, '→', stateAfterSpace, '→', stateResumed)
 
+// 展开状态下 ← → 切歌：播放中继续播，暂停时只切歌
+const titleAtStart = await evaluate("document.querySelector('.p-meta b')?.textContent")
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39 })
+await wait(1200)
+const titleNext = await evaluate("document.querySelector('.p-meta b')?.textContent")
+const stateNext = await evaluate("document.querySelector('.p-main')?.getAttribute('aria-label')")
+console.log('arrow next while playing:', JSON.stringify(titleAtStart), '→', JSON.stringify(titleNext), '|', stateNext)
+
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 })
+await wait(500)
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39 })
+await wait(1200)
+const titlePaused = await evaluate("document.querySelector('.p-meta b')?.textContent")
+const statePaused = await evaluate("document.querySelector('.p-main')?.getAttribute('aria-label')")
+console.log('arrow next while paused:', JSON.stringify(titlePaused), '|', statePaused)
+
 // 双击第二行切歌
 const secondTitle = await evaluate("document.querySelectorAll('.track-list li')[1]?.querySelector('b')?.textContent")
 const rows = await evaluate(`(() => { const r = document.querySelectorAll('.track-list li')[1].getBoundingClientRect(); return { x: r.x + 200, y: r.y + r.height / 2 }; })()`)
@@ -164,14 +183,28 @@ await wait(900)
 await shot('player-orb')
 const orbBox = await evaluate("(() => { const r = document.querySelector('.orb').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, left: Math.round(r.left), top: Math.round(r.top) }; })()")
 
-// 收起状态也能拖动
+// 收起状态也能拖动（拖动不应误触播放/暂停）
+const playingBeforeDrag = await evaluate("document.querySelector('.orb')?.classList.contains('playing') ? 'playing' : 'paused'")
 await mouse('mousePressed', orbBox.x, orbBox.y)
 await mouse('mouseMoved', orbBox.x - 160, orbBox.y - 90)
 await wait(100)
 await mouse('mouseReleased', orbBox.x - 160, orbBox.y - 90)
 await wait(400)
+const playingAfterDrag = await evaluate("document.querySelector('.orb')?.classList.contains('playing') ? 'playing' : 'paused'")
+const stillCollapsed = await evaluate("Boolean(document.querySelector('.orb'))")
 const orbAfterDrag = await evaluate("(() => { const r = document.querySelector('.orb')?.getBoundingClientRect(); return r ? { left: Math.round(r.left), top: Math.round(r.top) } : null })()")
-console.log('orb drag:', orbBox.left + ',' + orbBox.top, '→', orbAfterDrag?.left + ',' + orbAfterDrag?.top)
+console.log(
+  'orb drag:',
+  orbBox.left + ',' + orbBox.top,
+  '→',
+  orbAfterDrag?.left + ',' + orbAfterDrag?.top,
+  '| collapsed:',
+  stillCollapsed,
+  '| state:',
+  playingBeforeDrag,
+  '→',
+  playingAfterDrag,
+)
 await shot('player-orb-dragged')
 
 // 点一下圆球展开

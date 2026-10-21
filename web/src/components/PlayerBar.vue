@@ -61,15 +61,15 @@ function onDrag(event: PointerEvent): void {
 }
 
 function endDrag(): void {
-  const wasDragging = dragging.value
-  const moved = draggedDistance
   dragging.value = false
   window.removeEventListener('pointermove', onDrag)
   window.removeEventListener('pointerup', endDrag)
-  // 收起状态下，没拖动就当作点击：展开播放器
-  if (wasDragging && moved < 6 && player.collapsed) {
-    player.collapsed = false
-  }
+}
+
+/** 圆球上的点击：只有没拖动时才当点击（展开），拖动后松手不触发播放/暂停 */
+function onOrbClick(): void {
+  if (draggedDistance < 6) player.collapsed = false
+  draggedDistance = 0
 }
 
 function onWheel(event: WheelEvent): void {
@@ -131,7 +131,7 @@ function drawBars(): void {
   }
 }
 
-/** 收起时的小圆球：一圈随音乐起伏的径向律动 */
+/** 收起时的小圆球：内圈随低频脉动，外圈是一圈随音乐起伏的频谱 */
 function drawOrb(): void {
   const canvas = orbCanvas.value
   if (!canvas) return
@@ -143,19 +143,35 @@ function drawOrb(): void {
   const analyser = player.analyser
   const cx = width / 2
   const cy = height / 2
-  const bars = 20
-  const radius = width * 0.28
-  const maxLength = width * 0.19
   const now = performance.now()
-  const spin = player.playing ? now / 9000 : 0
+  const spin = player.playing ? now / 7000 : 0
+  const bass =
+    analyser && player.playing
+      ? ((spectrum[1] ?? 0) + (spectrum[2] ?? 0) + (spectrum[3] ?? 0)) / 3 / 255
+      : 0
+  const pulse = Math.min(1, bass)
 
+  // 中心光核：跟着低频一起呼吸
+  const core = width * (0.15 + 0.07 * pulse)
+  const glow = context.createRadialGradient(cx, cy, 0, cx, cy, core * 2)
+  glow.addColorStop(0, `rgba(94, 234, 212, ${0.3 + 0.35 * pulse})`)
+  glow.addColorStop(1, 'rgba(94, 234, 212, 0)')
+  context.fillStyle = glow
+  context.beginPath()
+  context.arc(cx, cy, core * 2, 0, Math.PI * 2)
+  context.fill()
+
+  // 外圈频谱
+  const bars = 28
+  const baseRadius = width * 0.21
+  const maxLength = width * 0.24
   for (let i = 0; i < bars; i++) {
     const angle = (i / bars) * Math.PI * 2 - Math.PI / 2 + spin
     const raw = analyser && player.playing ? (spectrum[(i * 2) % spectrum.length] ?? 0) / 255 : 0
-    const idle = 0.3 + 0.12 * Math.sin(now / 520 + i * 0.55)
-    const level = Math.max(idle, raw ** 1.05)
-    const inner = radius
-    const outer = radius + level * maxLength
+    const idle = 0.26 + 0.14 * Math.sin(now / 380 + i * 0.7)
+    const level = Math.max(idle, raw ** 1.1)
+    const inner = baseRadius
+    const outer = baseRadius + level * maxLength
     const x1 = cx + Math.cos(angle) * inner
     const y1 = cy + Math.sin(angle) * inner
     const x2 = cx + Math.cos(angle) * outer
@@ -163,22 +179,32 @@ function drawOrb(): void {
 
     context.beginPath()
     context.lineCap = 'round'
-    context.lineWidth = width * 0.06
-    context.strokeStyle = `hsla(${168 + (i / bars) * 34}, 84%, ${58 + level * 12}%, ${0.5 + level * 0.45})`
+    context.lineWidth = width * 0.05
+    context.strokeStyle = `hsla(${166 + (i / bars) * 40}, 86%, ${60 + level * 14}%, ${0.55 + level * 0.45})`
     context.moveTo(x1, y1)
     context.lineTo(x2, y2)
     context.stroke()
   }
 }
 
-/** 空格：有歌就暂停/继续；正在输入时不拦截 */
+/** 全局快捷键：空格暂停/继续；展开状态下 ← → 切歌 */
 function onGlobalKeydown(event: KeyboardEvent): void {
-  if (event.code !== 'Space' && event.key !== ' ') return
   const target = event.target as HTMLElement | null
   if (target && (/^(input|textarea|select)$/i.test(target.tagName) || target.isContentEditable)) return
   if (!player.current) return
-  event.preventDefault()
-  void player.toggle()
+  if (event.code === 'Space' || event.key === ' ') {
+    event.preventDefault()
+    void player.toggle()
+    return
+  }
+  if (player.collapsed) return
+  if (event.key === 'ArrowRight') {
+    event.preventDefault()
+    void player.shift(1)
+  } else if (event.key === 'ArrowLeft') {
+    event.preventDefault()
+    void player.shift(-1)
+  }
 }
 
 onMounted(() => {
@@ -386,25 +412,24 @@ onBeforeUnmount(() => {
     </aside>
   </Transition>
 
-  <Transition name="player">
-    <button
-      v-if="visible && player.collapsed"
-      type="button"
-      class="orb"
-      :style="playerStyle"
-      :aria-label="player.playing ? '暂停' : '播放'"
-      @pointerdown="startDrag"
-      @click="player.toggle()"
-    >
-      <canvas ref="orbCanvas" class="orb-canvas" width="240" height="240" aria-hidden="true" />
-      <span class="orb-icon" aria-hidden="true">
-        <svg v-if="player.playing" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M8 5h3v14H8zM13 5h3v14h-3z" />
-        </svg>
-        <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-      </span>
-    </button>
-  </Transition>
+  <button
+    v-if="visible && player.collapsed"
+    type="button"
+    class="orb"
+    :class="{ playing: player.playing }"
+    :style="playerStyle"
+    :aria-label="player.playing ? '暂停' : '播放'"
+    @pointerdown="startDrag"
+    @click="onOrbClick"
+  >
+    <canvas ref="orbCanvas" class="orb-canvas" width="240" height="240" aria-hidden="true" />
+    <span class="orb-icon" aria-hidden="true">
+      <svg v-if="player.playing" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8 5h3v14H8zM13 5h3v14h-3z" />
+      </svg>
+      <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+    </span>
+  </button>
 </template>
 
 <style scoped>
@@ -469,6 +494,26 @@ onBeforeUnmount(() => {
   box-shadow:
     0 16px 38px rgba(0, 0, 0, 0.6),
     inset 0 0 24px rgba(94, 234, 212, 0.2);
+}
+
+.orb.playing {
+  animation: orb-breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes orb-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 14px 34px rgba(0, 0, 0, 0.55),
+      inset 0 0 20px rgba(94, 234, 212, 0.12),
+      0 0 0 0 rgba(94, 234, 212, 0.28);
+  }
+  50% {
+    box-shadow:
+      0 14px 34px rgba(0, 0, 0, 0.55),
+      inset 0 0 26px rgba(94, 234, 212, 0.24),
+      0 0 0 8px rgba(94, 234, 212, 0);
+  }
 }
 
 .orb-canvas {

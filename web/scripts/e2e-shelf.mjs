@@ -152,7 +152,7 @@ await send('Runtime.evaluate', {
 await wait(700)
 await shot('reader-settings')
 await send('Runtime.evaluate', {
-  expression: '[...document.querySelectorAll(".r-actions .r-btn")].find(b=>/翻页|滚动/.test(b.textContent))?.click()',
+  expression: '[...document.querySelectorAll(".seg button")].find(b=>b.textContent.trim()==="滚动")?.click()',
 })
 await wait(900)
 await shot('reader-scroll')

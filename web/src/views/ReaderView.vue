@@ -102,12 +102,18 @@ const leafStyle = computed(() => ({
   transformOrigin: leafOnLeft.value ? 'right center' : 'left center',
 }))
 
+/** 页面左右留白：印刷品不会把字排到纸边 */
+const pageMargin = computed(() => Math.max(26, Math.round(pageWidth.value * 0.075)))
+const columnWidth = computed(() => Math.max(140, pageWidth.value - pageMargin.value * 2))
+
 function stripStyle(page: number): Record<string, string> {
   return {
-    transform: `translateX(-${page * (pageWidth.value + GUTTER)}px)`,
-    columnWidth: `${pageWidth.value}px`,
-    columnGap: `${GUTTER}px`,
+    transform: `translateX(-${page * pageWidth.value}px)`,
+    columnWidth: `${columnWidth.value}px`,
+    columnGap: `${pageMargin.value * 2}px`,
     height: `${pageHeight.value}px`,
+    paddingLeft: `${pageMargin.value}px`,
+    paddingRight: `${pageMargin.value}px`,
   }
 }
 
@@ -135,7 +141,7 @@ async function measurePages(reset = false): Promise<void> {
       : Math.min(preferredColumnPx.value, viewport.clientWidth)
   pageHeight.value = viewport.clientHeight
   await nextTick()
-  pageCount.value = Math.max(1, Math.round((strip.scrollWidth + GUTTER) / (pageWidth.value + GUTTER)))
+  pageCount.value = Math.max(1, Math.round((strip.scrollWidth + pageMargin.value) / pageWidth.value))
   if (reset) pageIndex.value = 0
   pageIndex.value = Math.min(pageIndex.value, pageCount.value - 1)
 }
@@ -755,6 +761,9 @@ onBeforeUnmount(() => {
 
 .reader-viewport.scroll {
   overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 0 20px;
 }
 
 /* ---------- 3D 翻书 ---------- */
@@ -1013,7 +1022,8 @@ onBeforeUnmount(() => {
 }
 
 .reader-scroll {
-  padding: 24px 0 40px;
+  width: min(100%, 46rem);
+  padding: 36px 30px 64px;
 }
 
 .reader-content {

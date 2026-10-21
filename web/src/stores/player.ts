@@ -177,6 +177,15 @@ export const usePlayerStore = defineStore('player', () => {
     await load(queue.value[index.value]!)
   }
 
+  /** 切换上一首/下一首：正在播就接着播，暂停状态只切歌不播放 */
+  async function shift(step: number): Promise<void> {
+    const target = index.value + step
+    if (target < 0 || target >= queue.value.length) return
+    const autoplay = playing.value
+    index.value = target
+    await load(queue.value[target]!, autoplay)
+  }
+
   async function prev(): Promise<void> {
     const element = ensureAudio()
     if (element.currentTime > 3) {
@@ -301,6 +310,7 @@ export const usePlayerStore = defineStore('player', () => {
     toggle,
     next,
     prev,
+    shift,
     advance,
     jumpTo,
     removeAt,
