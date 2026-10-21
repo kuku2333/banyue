@@ -1,5 +1,5 @@
-// 本地视觉自检：用系统里的 Edge（Chromium）无头模式截图，支持手机尺寸模拟。
-// 用法：node scripts/shot.mjs <url> <out.png> [width] [height] [mobile]
+// 本地视觉自检：用系统里的 Edge（Chromium）无头模式截图，支持手机尺寸模拟与点击后截图。
+// 用法：node scripts/shot.mjs <url> <out.png> [width] [height] [mobile] [clickSelector] [waitMs]
 import { spawn } from 'node:child_process'
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -11,15 +11,16 @@ const EDGE_CANDIDATES = [
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
 ].filter(Boolean)
 
-const [url, out, widthArg, heightArg, mobileArg] = process.argv.slice(2)
+const [url, out, widthArg, heightArg, mobileArg, clickSelector, waitArg] = process.argv.slice(2)
 if (!url || !out) {
-  console.error('用法: node scripts/shot.mjs <url> <out.png> [width=1440] [height=1000] [mobile=0]')
+  console.error('用法: node scripts/shot.mjs <url> <out.png> [width=1440] [height=1000] [mobile=0] [clickSelector] [waitMs]')
   process.exit(1)
 }
 
 const width = Number(widthArg ?? 1440)
 const height = Number(heightArg ?? 1000)
 const mobile = mobileArg === '1'
+const waitAfterClick = Number(waitArg ?? 5000)
 
 const browser = spawn(EDGE_CANDIDATES.find(Boolean), [
   '--headless=new',
@@ -27,6 +28,7 @@ const browser = spawn(EDGE_CANDIDATES.find(Boolean), [
   '--hide-scrollbars',
   '--remote-debugging-port=0',
   '--no-first-run',
+  '--autoplay-policy=no-user-gesture-required',
   '--user-data-dir=' + path.join(process.env.TEMP ?? '.', `dsh-shot-${Date.now()}`),
   'about:blank',
 ], { stdio: ['ignore', 'pipe', 'pipe'] })
@@ -83,6 +85,11 @@ await send('Emulation.setDeviceMetricsOverride', {
 })
 await send('Page.navigate', { url })
 await new Promise((resolve) => setTimeout(resolve, 2500))
+
+if (clickSelector) {
+  await send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(clickSelector)})?.click()` })
+  await new Promise((resolve) => setTimeout(resolve, waitAfterClick))
+}
 
 const { data } = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true })
 await writeFile(out, Buffer.from(data, 'base64'))

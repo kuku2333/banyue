@@ -93,3 +93,25 @@ export async function saveProgress(
     lastReadAt: Date.now(),
   })
 }
+
+/* ---------------- 本地音乐 ---------------- */
+
+export async function addTrack(record: TrackRecord): Promise<void> {
+  await db().tracks.put(record)
+}
+
+export async function listTracks(): Promise<TrackRecord[]> {
+  return db().tracks.orderBy('createdAt').reverse().toArray()
+}
+
+export async function findTrackByHash(hash: string): Promise<TrackRecord | undefined> {
+  return db().tracks.where('hash').equals(hash).first()
+}
+
+export async function getTrackBlob(id: string): Promise<Blob | undefined> {
+  return (await db().tracks.get(id))?.data
+}
+
+export async function deleteTrack(id: string): Promise<void> {
+  await db().tracks.delete(id)
+}

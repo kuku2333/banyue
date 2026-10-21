@@ -5,6 +5,7 @@ import SiteHeader from '@/components/SiteHeader.vue'
 import SiteFooter from '@/components/SiteFooter.vue'
 import MobileTabs from '@/components/MobileTabs.vue'
 import SearchOverlay from '@/components/SearchOverlay.vue'
+import PlayerBar from '@/components/PlayerBar.vue'
 
 const route = useRoute()
 const searchOpen = ref(false)
@@ -53,6 +54,7 @@ const isPost = computed(() => route.name === 'post')
 
   <SiteFooter />
   <MobileTabs />
+  <PlayerBar />
   <SearchOverlay v-model:open="searchOpen" />
 </template>
 

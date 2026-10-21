@@ -16,6 +16,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/ReaderView.vue'),
     meta: { title: '阅读 · 半页' },
   },
+  { path: '/music', name: 'music', component: () => import('@/views/MusicView.vue'), meta: { title: '听歌 · 半页' } },
   {
     path: '/tag/:tag',
     name: 'tag',
