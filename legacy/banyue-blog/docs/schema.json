@@ -1,0 +1,43 @@
+{
+  "note": "原托管环境的资料库表结构快照，字段名与类型可直接用于自建后端；三个 ID 与 blog.html 顶部常量一致",
+  "databases": [
+    {
+      "title": "半页 · 笔记与文章",
+      "id": "PKaqN27AzwPuZQuCf7sXBE",
+      "usedBy": "写作台 / 首页最近写的",
+      "properties": [
+        { "name": "标题", "type": "text" },
+        { "name": "内容", "type": "text", "note": "Markdown 原文" },
+        { "name": "类型", "type": "select", "options": ["笔记", "文章"] },
+        { "name": "标签", "type": "text", "note": "逗号分隔" },
+        { "name": "更新时间", "type": "date" },
+        { "name": "创建时间", "type": "date" }
+      ]
+    },
+    {
+      "title": "半页 · 云端书库",
+      "id": "IIFXDsvodFAbgS2APYyWP9",
+      "usedBy": "书架 / 云端书库",
+      "properties": [
+        { "name": "书名", "type": "text" },
+        { "name": "作者", "type": "text" },
+        { "name": "文件", "type": "attachment", "note": "单个 txt/md 附件" },
+        { "name": "字数", "type": "number" },
+        { "name": "章节数", "type": "number" },
+        { "name": "更新时间", "type": "date" }
+      ]
+    },
+    {
+      "title": "半页 · 云端音乐",
+      "id": "fBXQYzusWcHdMK5PwybdgA",
+      "usedBy": "听歌 / 云端音乐",
+      "properties": [
+        { "name": "歌名", "type": "text", "note": "不含扩展名" },
+        { "name": "文件", "type": "attachment", "note": "音频附件" },
+        { "name": "大小", "type": "number", "note": "字节" },
+        { "name": "上传时间", "type": "date" },
+        { "name": "指纹", "type": "text", "note": "SHA-256 前 16 位；旧记录可能为空，可用页面上的「补全指纹」补齐" }
+      ]
+    }
+  ]
+}
