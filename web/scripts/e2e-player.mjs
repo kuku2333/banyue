@@ -95,6 +95,41 @@ await evaluate("document.querySelector('.track-list .play')?.click()")
 await wait(3500)
 await shot('player-playing')
 
+// 空格暂停 / 继续
+const stateBefore = await evaluate("document.querySelector('.p-main')?.getAttribute('aria-label')")
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 })
+await wait(600)
+const stateAfterSpace = await evaluate("document.querySelector('.p-main')?.getAttribute('aria-label')")
+await send('Input.dispatchKeyEvent', { type: 'keyDown', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 })
+await send('Input.dispatchKeyEvent', { type: 'keyUp', key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 })
+await wait(600)
+const stateResumed = await evaluate("document.querySelector('.p-main')?.getAttribute('aria-label')")
+console.log('space toggle:', stateBefore, '→', stateAfterSpace, '→', stateResumed)
+
+// 双击第二行切歌
+const secondTitle = await evaluate("document.querySelectorAll('.track-list li')[1]?.querySelector('b')?.textContent")
+const rows = await evaluate(`(() => { const r = document.querySelectorAll('.track-list li')[1].getBoundingClientRect(); return { x: r.x + 200, y: r.y + r.height / 2 }; })()`)
+for (const count of [1, 2]) {
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: rows.x, y: rows.y, button: 'left', clickCount: count, buttons: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: rows.x, y: rows.y, button: 'left', clickCount: count, buttons: 0 })
+  await wait(80)
+}
+await wait(1500)
+const currentTitle = await evaluate("document.querySelector('.p-meta b')?.textContent")
+const playingAfterDbl = await evaluate("document.querySelector('.p-main')?.getAttribute('aria-label')")
+console.log('dblclick row2:', JSON.stringify(secondTitle), '→ player:', JSON.stringify(currentTitle), '|', playingAfterDbl)
+
+// 再双击当前播放的那一行：应暂停
+for (const count of [1, 2]) {
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: rows.x, y: rows.y, button: 'left', clickCount: count, buttons: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: rows.x, y: rows.y, button: 'left', clickCount: count, buttons: 0 })
+  await wait(80)
+}
+await wait(700)
+console.log('dblclick same row again:', await evaluate("document.querySelector('.p-main')?.getAttribute('aria-label')"))
+await shot('player-dblclick')
+
 // 滚轮调音量
 const before = await evaluate("document.querySelector('.p-vol input')?.value")
 await send('Input.dispatchMouseEvent', {

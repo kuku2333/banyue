@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { toParagraphs } from '@/lib/books'
 import { getBook, saveProgress, type BookRecord } from '@/lib/db'
 import { useReaderStore, READER_THEMES } from '@/stores/reader'
+import { usePlayerStore } from '@/stores/player'
 import type { Chapter } from '@/lib/books'
 
 const route = useRoute()
 const router = useRouter()
 const settings = useReaderStore()
+const player = usePlayerStore()
 
 const bookId = computed(() => String(route.params.id ?? ''))
 const book = ref<BookRecord | null>(null)
@@ -342,14 +344,19 @@ function onKeydown(event: KeyboardEvent): void {
   switch (event.key) {
     case 'ArrowRight':
     case 'ArrowDown':
-    case ' ':
       event.preventDefault()
-      turn(1)
+      void turn(1)
       break
     case 'ArrowLeft':
     case 'ArrowUp':
       event.preventDefault()
-      turn(-1)
+      void turn(-1)
+      break
+    case ' ':
+      // 有歌已载入时，空格交给播放器（暂停/继续）；阅读器改用 ← → 翻页
+      if (player.current) return
+      event.preventDefault()
+      void turn(1)
       break
     case 'Escape':
       if (tocOpen.value || settingsOpen.value) {

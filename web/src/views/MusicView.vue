@@ -156,7 +156,7 @@ onMounted(() => {
     <div class="page-head">
       <span class="eyebrow">Music · 听歌</span>
       <h1>听歌</h1>
-      <p>榜单来自 Apple Music 公开接口，试听 30 秒；本地音乐只存在这台设备上，不需要登录。</p>
+      <p>榜单来自 Apple Music 公开接口，试听 30 秒；双击任意一行播放/暂停，空格也能暂停或继续。</p>
     </div>
 
     <div class="chips" role="tablist" aria-label="音乐来源">
@@ -195,7 +195,13 @@ onMounted(() => {
       <p v-if="chartsLoading" class="empty">正在取榜单…</p>
       <p v-else-if="chartsError" class="notice">{{ chartsError }}（Apple 接口偶尔会限流，稍后再试）</p>
       <ol v-else class="track-list">
-        <li v-for="(track, index) in charts" :key="track.id" :class="{ playing: isCurrent(track) }">
+        <li
+          v-for="(track, index) in charts"
+          :key="track.id"
+          :class="{ playing: isCurrent(track) }"
+          title="双击播放 / 暂停"
+          @dblclick="player.toggleAt(charts, index)"
+        >
           <span class="num">{{ String(index + 1).padStart(2, '0') }}</span>
           <div class="t-main">
             <b>{{ track.title }}</b>
@@ -237,7 +243,13 @@ onMounted(() => {
       </div>
       <p v-if="searchError" class="notice">{{ searchError }}</p>
       <ol v-if="results.length" class="track-list">
-        <li v-for="(track, index) in results" :key="track.id" :class="{ playing: isCurrent(track) }">
+        <li
+          v-for="(track, index) in results"
+          :key="track.id"
+          :class="{ playing: isCurrent(track) }"
+          title="双击播放 / 暂停"
+          @dblclick="player.toggleAt(results, index)"
+        >
           <div class="t-main">
             <b>{{ track.title }}</b>
             <span>{{ track.artist }} · {{ track.album ?? '单曲' }}</span>
@@ -281,7 +293,13 @@ onMounted(() => {
       <p class="muted small">本地共 {{ local.length }} 首，存在浏览器 IndexedDB 里。</p>
 
       <ol v-if="localTracks.length" class="track-list">
-        <li v-for="(track, index) in localTracks" :key="track.id" :class="{ playing: isCurrent(track) }">
+        <li
+          v-for="(track, index) in localTracks"
+          :key="track.id"
+          :class="{ playing: isCurrent(track) }"
+          title="双击播放 / 暂停"
+          @dblclick="player.toggleAt(localTracks, index)"
+        >
           <div class="t-main">
             <b>{{ track.title }}</b>
             <span>{{ track.artist }} · #{{ track.hash?.slice(0, 6) }}</span>
@@ -323,7 +341,13 @@ onMounted(() => {
         </div>
       </div>
       <ol v-if="player.favorites.length" class="track-list">
-        <li v-for="(track, index) in player.favorites" :key="track.id" :class="{ playing: isCurrent(track) }">
+        <li
+          v-for="(track, index) in player.favorites"
+          :key="track.id"
+          :class="{ playing: isCurrent(track) }"
+          title="双击播放 / 暂停"
+          @dblclick="player.toggleAt(player.favorites, index)"
+        >
           <div class="t-main">
             <b>{{ track.title }}</b>
             <span>{{ track.artist || (track.local ? '本地文件' : '') }}</span>
@@ -419,6 +443,8 @@ onMounted(() => {
   padding: 11px 10px;
   border-bottom: 1px solid var(--line);
   transition: background 0.15s ease;
+  cursor: pointer;
+  user-select: none;
 }
 
 .track-list li:hover {

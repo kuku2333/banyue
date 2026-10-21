@@ -113,12 +113,24 @@ function drawSpectrum(): void {
   }
 }
 
+/** 空格：有歌就暂停/继续；正在输入时不拦截 */
+function onGlobalKeydown(event: KeyboardEvent): void {
+  if (event.code !== 'Space' && event.key !== ' ') return
+  const target = event.target as HTMLElement | null
+  if (target && (/^(input|textarea|select)$/i.test(target.tagName) || target.isContentEditable)) return
+  if (!player.current) return
+  event.preventDefault()
+  void player.toggle()
+}
+
 onMounted(() => {
   raf = requestAnimationFrame(drawSpectrum)
+  window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
+  window.removeEventListener('keydown', onGlobalKeydown)
   endDrag()
 })
 </script>

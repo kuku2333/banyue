@@ -146,6 +146,17 @@ export const usePlayerStore = defineStore('player', () => {
     await playList([track])
   }
 
+  /** 双击列表里的某一首：正在播就暂停，否则从这首开始播 */
+  async function toggleAt(tracks: Track[], target: number): Promise<void> {
+    const track = tracks[target]
+    if (!track) return
+    if (current.value?.id === track.id) {
+      await toggle()
+      return
+    }
+    await playList(tracks, target)
+  }
+
   async function toggle(): Promise<void> {
     const element = ensureAudio()
     if (!current.value) return
@@ -286,6 +297,7 @@ export const usePlayerStore = defineStore('player', () => {
     hasPrev,
     playList,
     playOne,
+    toggleAt,
     toggle,
     next,
     prev,
