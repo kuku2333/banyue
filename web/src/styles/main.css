@@ -20,7 +20,9 @@
   --accent-line: rgba(94, 234, 212, 0.32);
   --danger: #fb7185;
 
-  --serif: 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', Georgia, 'Times New Roman', serif;
+  --serif:
+    'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', 'STSong', Georgia,
+    'Times New Roman', serif;
   --sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB',
     'Microsoft YaHei', sans-serif;
@@ -575,6 +577,7 @@ svg {
   font-size: calc(1.02rem * var(--font-scale));
   line-height: 1.95;
   color: var(--text-2);
+  max-width: 44rem;
   --prose-lh: 1.95;
 }
 
@@ -788,6 +791,12 @@ svg {
 
 .post-nav .right {
   text-align: right;
+}
+
+.post-nav > span {
+  padding: 14px 16px;
+  color: var(--dim);
+  font-size: 0.85rem;
 }
 
 /* ---------- 标签墙 / 归档 ---------- */

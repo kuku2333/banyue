@@ -24,3 +24,6 @@ npm-debug.log*
 pnpm-debug.log*
 .tmp-*
 *.tmp
+
+# 本地视觉自检截图
+.shots/
