@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useStorage, useWindowSize } from '@vueuse/core'
+import { useStorage } from '@vueuse/core'
 import { PLAY_MODES, usePlayerStore } from '@/stores/player'
 import CollectionPicker from '@/components/CollectionPicker.vue'
 import CommentsPanel from '@/components/CommentsPanel.vue'
@@ -14,7 +14,6 @@ const commentsOpen = ref(false)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const orbCanvas = ref<HTMLCanvasElement | null>(null)
 const pos = useStorage('banyue:player:pos', { right: 20, bottom: 20 })
-const { width: windowWidth } = useWindowSize()
 const dragging = ref(false)
 let draggedDistance = 0
 
@@ -27,12 +26,24 @@ const artStyle = computed(() => {
   }
 })
 const modeInfo = computed(() => PLAY_MODES.find((item) => item.id === player.mode) ?? PLAY_MODES[0]!)
-const playerStyle = computed(() =>
-  windowWidth.value > 767 ? { right: `${pos.value.right}px`, bottom: `${pos.value.bottom}px` } : {},
-)
+// 位置样式对所有屏幕生效（此前手机端返回空对象，导致拖动了也不动）
+const playerStyle = computed(() => ({
+  right: `${pos.value.right}px`,
+  bottom: `${pos.value.bottom}px`,
+}))
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max))
+}
+
+/** 按面板实际尺寸算拖动边界，避免手机上拖出屏幕 */
+function dragBounds() {
+  const el = document.querySelector('.player') ?? document.querySelector('.orb')
+  const rect = el?.getBoundingClientRect()
+  return {
+    maxRight: Math.max(8, window.innerWidth - (rect?.width ?? 320) - 8),
+    maxBottom: Math.max(8, window.innerHeight - (rect?.height ?? 180) - 8),
+  }
 }
 
 let startX = 0
@@ -50,17 +61,21 @@ function startDrag(event: PointerEvent): void {
   baseBottom = pos.value.bottom
   window.addEventListener('pointermove', onDrag)
   window.addEventListener('pointerup', endDrag)
+  // 手机上手指移出元素/被系统打断时也要收尾，否则拖动会「粘住」
+  window.addEventListener('pointercancel', endDrag)
 }
 
 function onDrag(event: PointerEvent): void {
   if (!dragging.value) return
+  event.preventDefault()
   draggedDistance = Math.max(
     draggedDistance,
     Math.abs(event.clientX - startX) + Math.abs(event.clientY - startY),
   )
+  const bounds = dragBounds()
   pos.value = {
-    right: clamp(baseRight - (event.clientX - startX), 8, window.innerWidth - 180),
-    bottom: clamp(baseBottom - (event.clientY - startY), 8, window.innerHeight - 120),
+    right: clamp(baseRight - (event.clientX - startX), 8, bounds.maxRight),
+    bottom: clamp(baseBottom - (event.clientY - startY), 8, bounds.maxBottom),
   }
 }
 
@@ -68,6 +83,7 @@ function endDrag(): void {
   dragging.value = false
   window.removeEventListener('pointermove', onDrag)
   window.removeEventListener('pointerup', endDrag)
+  window.removeEventListener('pointercancel', endDrag)
 }
 
 /** 圆球上的点击：只有没拖动时才当点击（展开），拖动后松手不触发播放/暂停 */
@@ -852,11 +868,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 767px) {
+  /* 只限宽度，不设 left/right——位置交给拖动的 right/bottom，否则两者打架 */
   .player {
-    right: 12px;
-    left: 12px;
-    width: auto;
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    width: min(320px, calc(100vw - 24px));
+    bottom: calc(84px + env(safe-area-inset-bottom));
   }
 }
 </style>
