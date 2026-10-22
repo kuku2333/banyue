@@ -2,6 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useShelfStore } from '@/stores/shelf'
 import CollectionPicker from '@/components/CollectionPicker.vue'
+import { assetUrl, deleteAsset, formatSize, listAssets, uploadAsset, type CloudAsset } from '@/lib/cloud'
+import { cleanBookText, decodeText, splitChapters } from '@/lib/books'
+import { getBook, putBook } from '@/lib/db'
 import { formatDate } from '@/lib/format'
 import { formatCount } from '@/lib/format'
 
@@ -12,6 +15,89 @@ const message = ref('')
 const busy = ref(false)
 const pickerOpen = ref(false)
 const pickerItem = ref<{ key: string; title: string; subtitle: string } | null>(null)
+
+const cloudBooks = ref<CloudAsset[]>([])
+const cloudLoading = ref(false)
+const cloudBusy = ref('')
+const cloudError = ref('')
+
+async function loadCloud(): Promise<void> {
+  cloudLoading.value = true
+  cloudError.value = ''
+  try {
+    cloudBooks.value = await listAssets('book')
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    cloudLoading.value = false
+  }
+}
+
+/** 把本机的一本书上传到云端（用章节内容重新拼出文本） */
+async function uploadBook(book: { id: string; title: string; author: string }): Promise<void> {
+  cloudBusy.value = book.id
+  cloudError.value = ''
+  try {
+    const data = await getBook(book.id)
+    if (!data) throw new Error('找不到这本书的内容')
+    const text = data.chapters.map((chapter) => `${chapter.title}\n\n${chapter.content}`).join('\n\n')
+    await uploadAsset('book', new Blob([text], { type: 'text/plain' }), {
+      title: book.title,
+      subtitle: book.author,
+      filename: `${book.title}.txt`,
+    })
+    message.value = `已把《${book.title}》传到云端`
+    setTimeout(() => (message.value = ''), 3000)
+    await loadCloud()
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    cloudBusy.value = ''
+  }
+}
+
+/** 从云端下载到本地书架，走与导入文件相同的分章流程 */
+async function downloadBook(asset: CloudAsset): Promise<void> {
+  cloudBusy.value = asset.id
+  cloudError.value = ''
+  try {
+    const response = await fetch(assetUrl(asset.id))
+    if (!response.ok) throw new Error(`下载失败（${response.status}）`)
+    const buffer = await response.arrayBuffer()
+    const { text, encoding } = decodeText(buffer)
+    const cleaned = cleanBookText(text)
+    const chapters = splitChapters(cleaned)
+    const id = `${Date.now().toString(36)}-cloud`
+    await putBook(
+      {
+        id,
+        title: asset.title,
+        author: asset.subtitle,
+        format: 'txt',
+        size: asset.size,
+        words: cleaned.replace(/\s+/g, '').length,
+        chapterCount: chapters.length,
+        encoding,
+        createdAt: Date.now(),
+        progress: 0,
+      },
+      chapters,
+    )
+    await shelf.refresh()
+    message.value = `《${asset.title}》已加入书架`
+    setTimeout(() => (message.value = ''), 3000)
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    cloudBusy.value = ''
+  }
+}
+
+async function removeCloud(asset: CloudAsset): Promise<void> {
+  if (!window.confirm(`从云端删除《${asset.title}》？`)) return
+  await deleteAsset(asset.id)
+  await loadCloud()
+}
 
 function addToCollection(book: { id: string; title: string; author: string; words: number }): void {
   pickerItem.value = {
@@ -24,6 +110,7 @@ function addToCollection(book: { id: string; title: string; author: string; word
 
 onMounted(() => {
   void shelf.refresh()
+  void loadCloud()
 })
 
 async function handleFiles(files: FileList | File[] | null): Promise<void> {
@@ -70,9 +157,9 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
       <span class="eyebrow">Shelf · 本地书架</span>
       <h1>书架</h1>
       <p>
-        书只存在这台设备的浏览器里（IndexedDB），不上传、不需要登录。
+        默认只存在这台设备的浏览器里（IndexedDB）；登录后可以把书传到云端，别人也能下载。
         <template v-if="shelf.books.length">
-          共 {{ shelf.books.length }} 本 · {{ formatCount(totalWords) }} 字 · 读完 {{ finished }} 本。
+          本地共 {{ shelf.books.length }} 本 · {{ formatCount(totalWords) }} 字 · 读完 {{ finished }} 本。
         </template>
       </p>
     </div>
@@ -127,8 +214,39 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
           删除
         </button>
         <button type="button" class="book-collect" @click="addToCollection(book)">收藏夹</button>
+        <button
+          type="button"
+          class="book-cloud"
+          :disabled="cloudBusy === book.id"
+          @click="uploadBook(book)"
+        >
+          {{ cloudBusy === book.id ? '上传中…' : '传到云端' }}
+        </button>
       </article>
     </div>
+
+    <div class="section-title cloud-head">
+      <h2>云端书库</h2>
+      <span class="muted small">公开 · 谁上传的都能看到</span>
+    </div>
+    <p v-if="cloudError" class="error">{{ cloudError }}</p>
+    <p v-if="cloudLoading" class="muted small">正在加载云端书库…</p>
+    <p v-else-if="!cloudBooks.length" class="muted small">云端还没有书。把书架里的书「传到云端」就会出现在这里。</p>
+    <ul v-else class="cloud-list">
+      <li v-for="asset in cloudBooks" :key="asset.id">
+        <div class="cloud-main">
+          <b>{{ asset.title }}</b>
+          <span>
+            {{ asset.subtitle || '未知作者' }} · {{ formatSize(asset.size) }} ·
+            {{ asset.owner.displayName }}<template v-if="asset.mine">（我）</template>
+          </span>
+        </div>
+        <button type="button" class="cloud-btn" :disabled="cloudBusy === asset.id" @click="downloadBook(asset)">
+          {{ cloudBusy === asset.id ? '下载中…' : '下载到书架' }}
+        </button>
+        <button v-if="asset.mine" type="button" class="cloud-del" @click="removeCloud(asset)">删除</button>
+      </li>
+    </ul>
 
     <CollectionPicker
       :open="pickerOpen"
@@ -298,5 +416,93 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
 .book-collect:hover {
   color: var(--accent);
   border-color: var(--accent-line);
+}
+
+.book-cloud {
+  position: absolute;
+  bottom: 10px;
+  right: 78px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 0.72rem;
+  opacity: 0;
+  transition: 0.15s ease;
+}
+
+.book-card:hover .book-cloud,
+.book-cloud:focus-visible {
+  opacity: 1;
+}
+
+.book-cloud:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
+.cloud-head {
+  margin-top: 40px;
+  align-items: baseline;
+}
+
+.cloud-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.cloud-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cloud-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cloud-main b {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.cloud-main span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.cloud-btn,
+.cloud-del {
+  padding: 5px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 0.75rem;
+}
+
+.cloud-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
+.cloud-del {
+  color: var(--dim);
+}
+
+.cloud-del:hover {
+  color: var(--danger);
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.8rem;
 }
 </style>

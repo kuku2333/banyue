@@ -13,9 +13,9 @@ export function bookKeyFor(book: { title: string; author?: string | null; words:
   return `book-${Math.abs(hash).toString(36)}`
 }
 
-/** 云端歌才有公开评论；本地文件用本地笔记 */
+/** 云端歌（Apple 榜单 / 自己上传到云端）才有公开评论；本地文件用本地笔记 */
 export function isCloudTrack(track: Track): boolean {
-  return !track.local && track.id.startsWith('apple-')
+  return !track.local && (track.id.startsWith('apple-') || track.id.startsWith('cloud-'))
 }
 
 export function trackKeyFor(track: Track): string {

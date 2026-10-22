@@ -1,4 +1,4 @@
-export type TrackSource = 'itunes' | 'local' | 'bili'
+export type TrackSource = 'itunes' | 'local' | 'cloud' | 'bili'
 
 export interface Track {
   id: string

@@ -156,4 +156,85 @@ test('歌曲评论：云端公开，空评论被拒', async () => {
   assert.equal(list.body.comments.length, 1)
   assert.equal(list.body.comments[0].body, '循环一晚上了')
   assert.equal(list.body.comments[0].owner.username, 'alice')
+
+  const removed = await call(`/api/songs/apple-42/comments/${created.body.id}`, { method: 'DELETE', cookie: login.cookie })
+  assert.equal(removed.status, 200)
+})
+
+test('恢复码：可重置密码、旧密码失效、旧会话作废', async () => {
+  const registered = await call('/api/auth/register', {
+    method: 'POST',
+    body: { username: 'carol', password: 'secret123', displayName: '卡罗尔' },
+  })
+  assert.equal(registered.status, 201)
+  const code = registered.body.recoveryCode
+  assert.match(code, /^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/)
+
+  const wrong = await call('/api/auth/recover', {
+    method: 'POST',
+    body: { username: 'carol', code: 'AAAA-AAAA-AAAA-AAAA', password: 'newsecret' },
+  })
+  assert.equal(wrong.status, 401)
+
+  const recovered = await call('/api/auth/recover', {
+    method: 'POST',
+    body: { username: 'carol', code, password: 'newsecret' },
+  })
+  assert.equal(recovered.status, 200)
+  assert.notEqual(recovered.body.recoveryCode, code, '恢复码应当轮换')
+
+  const oldPassword = await call('/api/auth/login', { method: 'POST', body: { username: 'carol', password: 'secret123' } })
+  assert.equal(oldPassword.status, 401)
+  const newPassword = await call('/api/auth/login', { method: 'POST', body: { username: 'carol', password: 'newsecret' } })
+  assert.equal(newPassword.status, 200)
+})
+
+test('云端文件：登录上传、公开列表、原样下载、只有作者能删', async () => {
+  const login = await call('/api/auth/login', { method: 'POST', body: alice })
+  const text = '第一章 雨夜\n\n雨下了一整天。\n'
+  const uploaded = await fetch(`${BASE}/api/assets?kind=book`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'text/plain',
+      'x-title': encodeURIComponent('雨夜'),
+      'x-subtitle': encodeURIComponent('测试作者'),
+      cookie: login.cookie,
+    },
+    body: text,
+  })
+  assert.equal(uploaded.status, 201)
+  const { id } = await uploaded.json()
+
+  const anonymousUpload = await fetch(`${BASE}/api/assets?kind=book`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', 'x-title': 'x' },
+    body: 'x',
+  })
+  assert.equal(anonymousUpload.status, 401)
+
+  const listed = await call('/api/assets?kind=book')
+  const found = listed.body.assets.find((asset) => asset.id === id)
+  assert.ok(found)
+  assert.equal(found.title, '雨夜')
+  assert.equal(found.owner.username, 'alice')
+
+  const downloaded = await fetch(`${BASE}/api/assets/${id}/file`)
+  assert.equal(downloaded.status, 200)
+  assert.equal(await downloaded.text(), text)
+
+  const ranged = await fetch(`${BASE}/api/assets/${id}/file`, { headers: { range: 'bytes=0-5' } })
+  assert.equal(ranged.status, 206)
+  assert.equal(ranged.headers.get('content-range'), `bytes 0-5/${Buffer.byteLength(text)}`)
+
+  const bob = await call('/api/auth/register', {
+    method: 'POST',
+    body: { username: 'dave', password: 'secret123', displayName: '戴夫' },
+  })
+  const forbidden = await call(`/api/assets/${id}`, { method: 'DELETE', cookie: bob.cookie })
+  assert.equal(forbidden.status, 403)
+
+  const removed = await call(`/api/assets/${id}`, { method: 'DELETE', cookie: login.cookie })
+  assert.equal(removed.status, 200)
+  const gone = await fetch(`${BASE}/api/assets/${id}/file`)
+  assert.equal(gone.status, 404)
 })

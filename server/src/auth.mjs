@@ -62,23 +62,55 @@ export function newId(prefix) {
   return `${prefix}_${randomUUID().replaceAll('-', '').slice(0, 20)}`
 }
 
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+/** 恢复码：四组四位，去掉容易看混的 0/O/1/I */
+export function generateRecoveryCode() {
+  const bytes = randomBytes(16)
+  const chars = Array.from(bytes, (byte) => CODE_ALPHABET[byte % CODE_ALPHABET.length])
+  return [chars.slice(0, 4).join(''), chars.slice(4, 8).join(''), chars.slice(8, 12).join(''), chars.slice(12, 16).join('')].join('-')
+}
+
+export function setRecoveryCode(userId, code) {
+  const salt = randomBytes(16).toString('hex')
+  const hash = scryptSync(code.trim().toUpperCase(), salt, 64).toString('hex')
+  run('UPDATE users SET recovery_hash = ?, recovery_salt = ? WHERE id = ?', [hash, salt, userId])
+}
+
+export function verifyRecoveryCode(user, code) {
+  if (!user?.recovery_hash || !user?.recovery_salt) return false
+  const actual = scryptSync(String(code).trim().toUpperCase(), user.recovery_salt, 64)
+  const target = Buffer.from(user.recovery_hash, 'hex')
+  return actual.length === target.length && timingSafeEqual(actual, target)
+}
+
 export function makeUser(username, displayName, password) {
   const { hash, salt } = hashPassword(password)
+  const recoveryCode = generateRecoveryCode()
+  const recoverySalt = randomBytes(16).toString('hex')
+  const recoveryHash = scryptSync(recoveryCode, recoverySalt, 64).toString('hex')
   const user = {
     id: newId('u'),
     username,
     display_name: displayName,
     password_hash: hash,
     salt,
+    recovery_hash: recoveryHash,
+    recovery_salt: recoverySalt,
     created_at: Date.now(),
   }
-  run('INSERT INTO users (id, username, display_name, password_hash, salt, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
-    user.id,
-    user.username,
-    user.display_name,
-    user.password_hash,
-    user.salt,
-    user.created_at,
-  ])
-  return { id: user.id, username, display_name: displayName }
+  run(
+    'INSERT INTO users (id, username, display_name, password_hash, salt, recovery_hash, recovery_salt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      user.id,
+      user.username,
+      user.display_name,
+      user.password_hash,
+      user.salt,
+      user.recovery_hash,
+      user.recovery_salt,
+      user.created_at,
+    ],
+  )
+  return { id: user.id, username, display_name: displayName, recoveryCode }
 }

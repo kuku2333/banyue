@@ -22,6 +22,7 @@ BANYUE_DB=/path/db.sqlite node src/index.mjs
 | `collection_items` | 收藏夹条目：外键 + 标题/副标题快照 |
 | `bookmarks` | 书签：书、章节、比例、留言，公开 |
 | `song_comments` | 云端的歌曲评论 |
+| `assets` | 云端文件：书 `book` / 音乐 `track`，落盘在 `server/data/files/` |
 
 「本地的评论别人看不见」是这样实现的：本地书/本地音乐的评论只写在浏览器 IndexedDB，
 永远不发请求；只有云端条目才会调用下面这些接口。
@@ -47,14 +48,26 @@ BANYUE_DB=/path/db.sqlite node src/index.mjs
 | DELETE | `/api/bookmarks/:id` | 只有作者 |
 | GET | `/api/songs/:key/comments` | 公开评论 |
 | POST | `/api/songs/:key/comments` | 需登录：`{body}` |
+| DELETE | `/api/songs/:key/comments/:id` | 只有作者 |
+| GET | `/api/assets?kind=book\|track` | 云端文件列表（公开，带上传者） |
+| POST | `/api/assets?kind=book\|track` | 需登录：原始字节 + 头 `x-title` / `x-subtitle` / `x-filename` |
+| GET | `/api/assets/:id/file` | 下载 / 流式播放，支持 Range |
+| DELETE | `/api/assets/:id` | 只有上传者 |
+| POST | `/api/auth/recover` | 恢复码重置密码：`{username, code, password}` |
+| POST | `/api/auth/recovery-code` | 登录后重新生成恢复码 |
+
+上传体积上限：书 20MB、音乐 40MB；文件落在 `server/data/files/`，数据库只存元信息。
 
 ## 安全边界
 
 - 密码用 `scrypt`（N=16384）加盐存储，不存明文；
 - 会话是随机 24 字节令牌，Cookie 为 `HttpOnly; SameSite=Lax`，不暴露给前端 JS；
 - 写操作全部校验登录态与归属（别人的收藏夹返回 403）；
-- 请求体上限 64KB，用户名/评论/留言都限长；
-- 同一个用户的自建部署里没有第三方登录、没有邮箱，也就没有「找回密码」——忘记密码只能直接改库。
+- 请求体上限 64KB（JSON），上传另按类型限 20MB / 40MB；
+- 同一个用户的自建部署里没有第三方登录、没有邮箱；
+- **恢复码**在注册时显示一次（形如 `ABCD-EFGH-JKLM-NPQR`），只存 scrypt 哈希；
+  忘记密码时用「用户名 + 恢复码 + 新密码」重置，成功后恢复码轮换、所有旧会话作废。
+  恢复码丢了就只能改库——这是不接邮箱的代价。
 
 ## 测试
 

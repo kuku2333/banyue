@@ -2,11 +2,12 @@
 import { computed, onMounted, ref } from 'vue'
 import { usePlayerStore } from '@/stores/player'
 import { REGIONS, fetchTopSongs, fingerprint, formatTime, isAudioFile, searchSongs, type Region, type Track } from '@/lib/music'
-import { addTrack, deleteTrack, findTrackByHash, listTracks, type TrackRecord } from '@/lib/db'
+import { addTrack, deleteTrack, findTrackByHash, getTrackBlob, listTracks, type TrackRecord } from '@/lib/db'
+import { assetUrl, deleteAsset, formatSize, listAssets, uploadAsset, type CloudAsset } from '@/lib/cloud'
 import { BILI_HOT, BILI_SNAP } from '@/lib/bili'
 import { formatCount } from '@/lib/format'
 
-type Tab = 'charts' | 'search' | 'local' | 'favs' | 'bili' | 'douyin'
+type Tab = 'charts' | 'search' | 'local' | 'cloud' | 'favs' | 'bili' | 'douyin'
 
 const player = usePlayerStore()
 const tab = ref<Tab>('charts')
@@ -29,10 +30,65 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'charts', label: '榜单' },
   { id: 'search', label: '搜索' },
   { id: 'local', label: '本地音乐' },
+  { id: 'cloud', label: '云端音乐' },
   { id: 'favs', label: '收藏' },
   { id: 'bili', label: 'B站' },
   { id: 'douyin', label: '抖音' },
 ]
+
+const cloudTracks = ref<CloudAsset[]>([])
+const cloudLoading = ref(false)
+const cloudBusy = ref('')
+const cloudError = ref('')
+
+const cloudList = computed<Track[]>(() =>
+  cloudTracks.value.map((asset) => ({
+    id: `cloud-${asset.id}`,
+    title: asset.title,
+    artist: asset.subtitle || '云端上传',
+    source: 'cloud' as const,
+    previewUrl: assetUrl(asset.id),
+  })),
+)
+
+async function loadCloud(): Promise<void> {
+  cloudLoading.value = true
+  cloudError.value = ''
+  try {
+    cloudTracks.value = await listAssets('track')
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    cloudLoading.value = false
+  }
+}
+
+async function uploadToCloud(track: Track): Promise<void> {
+  cloudBusy.value = track.id
+  cloudError.value = ''
+  try {
+    const blob = await getTrackBlob(track.id)
+    if (!blob) throw new Error('本地文件读取失败')
+    await uploadAsset('track', blob, {
+      title: track.title,
+      subtitle: track.artist === '本地文件' ? '' : track.artist,
+      filename: track.title,
+    })
+    message.value = `已把《${track.title}》传到云端`
+    setTimeout(() => (message.value = ''), 3000)
+    await loadCloud()
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    cloudBusy.value = ''
+  }
+}
+
+async function removeCloud(asset: CloudAsset): Promise<void> {
+  if (!window.confirm(`从云端删除《${asset.title}》？`)) return
+  await deleteAsset(asset.id)
+  await loadCloud()
+}
 
 const localTracks = computed<Track[]>(() =>
   local.value.map((item) => ({
@@ -148,6 +204,7 @@ function isCurrent(track: Track): boolean {
 onMounted(() => {
   void loadCharts()
   void refreshLocal()
+  void loadCloud()
 })
 </script>
 
@@ -290,6 +347,7 @@ onMounted(() => {
         <span class="muted small">支持 mp3 / m4a / flac / wav / ogg，按内容指纹去重</span>
       </div>
       <p v-if="message" class="notice">{{ message }}</p>
+      <p v-if="cloudError" class="notice">{{ cloudError }}</p>
       <p class="muted small">本地共 {{ local.length }} 首，存在浏览器 IndexedDB 里。</p>
 
       <ol v-if="localTracks.length" class="track-list">
@@ -315,10 +373,42 @@ onMounted(() => {
           >
             ★
           </button>
+          <button type="button" class="cloud-btn" :disabled="cloudBusy === track.id" @click="uploadToCloud(track)">
+            {{ cloudBusy === track.id ? '上传中…' : '传到云端' }}
+          </button>
           <button type="button" class="del" @click="removeLocal(track.id)">删除</button>
         </li>
       </ol>
       <p v-else class="empty">还没有本地音乐。导入几首，退出浏览器也还在。</p>
+    </section>
+
+    <!-- 云端音乐 -->
+    <section v-else-if="tab === 'cloud'" class="panel">
+      <div class="row-head">
+        <span class="muted small">云端共 {{ cloudTracks.length }} 首 · 所有人可听</span>
+        <button type="button" class="btn small-btn" @click="loadCloud">刷新</button>
+      </div>
+      <p v-if="cloudError" class="notice">{{ cloudError }}</p>
+      <p v-if="cloudLoading" class="muted small">加载中…</p>
+      <ol v-else-if="cloudList.length" class="track-list">
+        <li
+          v-for="(track, index) in cloudList"
+          :key="track.id"
+          :class="{ playing: isCurrent(track) }"
+          title="双击播放 / 暂停"
+          @dblclick="player.toggleAt(cloudList, index)"
+        >
+          <div class="t-main">
+            <b>{{ track.title }}</b>
+            <span>{{ cloudTracks[index]?.owner.displayName }} · {{ formatSize(cloudTracks[index]?.size ?? 0) }}</span>
+          </div>
+          <button type="button" class="play" @click="playFrom(cloudList, index)">
+            {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
+          </button>
+          <button v-if="cloudTracks[index]?.mine" type="button" class="del" @click="removeCloud(cloudTracks[index]!)">删除</button>
+        </li>
+      </ol>
+      <p v-else class="empty">云端还没有音乐。把「本地音乐」里的歌传到云端，别人也能听。</p>
     </section>
 
     <!-- 收藏 -->
@@ -498,7 +588,8 @@ onMounted(() => {
 
 .play,
 .star,
-.del {
+.del,
+.cloud-btn {
   flex: none;
   padding: 5px 12px;
   border-radius: 8px;
@@ -509,7 +600,8 @@ onMounted(() => {
 }
 
 .play:hover,
-.star:hover {
+.star:hover,
+.cloud-btn:hover {
   color: var(--accent);
   border-color: var(--accent-line);
 }
@@ -531,6 +623,15 @@ onMounted(() => {
 .del:hover {
   color: var(--danger);
   border-color: rgba(251, 113, 133, 0.4);
+}
+
+.cloud-btn {
+  color: var(--dim);
+  font-size: 0.74rem;
+}
+
+.cloud-btn:disabled {
+  opacity: 0.5;
 }
 
 .search-row {

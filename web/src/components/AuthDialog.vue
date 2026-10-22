@@ -6,14 +6,19 @@ const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const auth = useAuthStore()
-const mode = ref<'login' | 'register'>('login')
+const mode = ref<'login' | 'register' | 'recover'>('login')
 const username = ref('')
 const password = ref('')
 const displayName = ref('')
+const code = ref('')
 const busy = ref(false)
 const error = ref('')
+const copied = ref(false)
 
-const title = computed(() => (mode.value === 'login' ? '登录' : '注册'))
+const title = computed(() =>
+  mode.value === 'login' ? '登录' : mode.value === 'register' ? '注册' : '用恢复码重置密码',
+)
+const showRecovery = computed(() => Boolean(auth.recoveryCode))
 
 watch(
   () => props.open,
@@ -21,6 +26,8 @@ watch(
     if (open) {
       error.value = ''
       password.value = ''
+      code.value = ''
+      copied.value = false
     }
   },
 )
@@ -32,57 +39,96 @@ async function submit(): Promise<void> {
   try {
     if (mode.value === 'login') {
       await auth.login(username.value.trim(), password.value)
-    } else {
+    } else if (mode.value === 'register') {
       await auth.register(username.value.trim(), password.value, displayName.value.trim())
+    } else {
+      await auth.recover(username.value.trim(), code.value.trim(), password.value)
     }
-    emit('update:open', false)
   } catch (err) {
     error.value = (err as Error).message
   } finally {
     busy.value = false
   }
 }
+
+async function copyCode(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(auth.recoveryCode)
+    copied.value = true
+    setTimeout(() => (copied.value = false), 1800)
+  } catch {
+    copied.value = false
+  }
+}
+
+function finish(): void {
+  auth.recoveryCode = ''
+  emit('update:open', false)
+}
 </script>
 
 <template>
   <Transition name="auth">
-    <div v-if="open" class="auth-layer" role="dialog" aria-modal="true" :aria-label="title" @click.self="emit('update:open', false)">
-      <form class="auth-box" @submit.prevent="submit">
+    <div v-if="open" class="auth-layer" role="dialog" aria-modal="true" :aria-label="title" @click.self="finish">
+      <div class="auth-box">
         <header>
-          <h2>{{ title }}</h2>
-          <button type="button" class="close" aria-label="关闭" @click="emit('update:open', false)">×</button>
+          <h2>{{ showRecovery ? '保存你的恢复码' : title }}</h2>
+          <button type="button" class="close" aria-label="关闭" @click="finish">×</button>
         </header>
 
-        <p class="lead">账号只用来认领你的收藏夹、书签和评论，不需要邮箱，也不接第三方登录。</p>
+        <template v-if="showRecovery">
+          <p class="lead">这是唯一一次显示。忘记密码时，靠它重置；丢了只能改库。</p>
+          <div class="code">{{ auth.recoveryCode }}</div>
+          <button type="button" class="ghost" @click="copyCode">{{ copied ? '已复制' : '复制恢复码' }}</button>
+          <button type="button" class="submit" @click="finish">我已保存，继续</button>
+        </template>
 
-        <label>
-          <span>用户名</span>
-          <input v-model="username" autocomplete="username" placeholder="3-24 位，字母数字下划线" required />
-        </label>
+        <form v-else class="form" @submit.prevent="submit">
+          <p class="lead">账号只用来认领收藏夹、书签和评论，不需要邮箱，也不接第三方登录。</p>
 
-        <label v-if="mode === 'register'">
-          <span>昵称（可选）</span>
-          <input v-model="displayName" autocomplete="nickname" placeholder="别人看到的名字" />
-        </label>
+          <label>
+            <span>用户名</span>
+            <input v-model="username" autocomplete="username" placeholder="3-24 位，字母数字下划线" required />
+          </label>
 
-        <label>
-          <span>密码</span>
-          <input v-model="password" type="password" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" placeholder="至少 6 位" required />
-        </label>
+          <label v-if="mode === 'register'">
+            <span>昵称（可选）</span>
+            <input v-model="displayName" autocomplete="nickname" placeholder="别人看到的名字" />
+          </label>
 
-        <p v-if="error" class="error">{{ error }}</p>
+          <label v-if="mode === 'recover'">
+            <span>恢复码</span>
+            <input v-model="code" placeholder="XXXX-XXXX-XXXX-XXXX" required />
+          </label>
 
-        <button type="submit" class="submit" :disabled="busy">{{ busy ? '处理中…' : title }}</button>
+          <label>
+            <span>{{ mode === 'recover' ? '新密码' : '密码' }}</span>
+            <input
+              v-model="password"
+              type="password"
+              :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+              placeholder="至少 6 位"
+              required
+            />
+          </label>
 
-        <p class="switch">
-          <template v-if="mode === 'login'">
-            还没有账号？<button type="button" @click="mode = 'register'; error = ''">注册一个</button>
-          </template>
-          <template v-else>
-            已经有账号？<button type="button" @click="mode = 'login'; error = ''">去登录</button>
-          </template>
-        </p>
-      </form>
+          <p v-if="error" class="error">{{ error }}</p>
+
+          <button type="submit" class="submit" :disabled="busy">
+            {{ busy ? '处理中…' : mode === 'login' ? '登录' : mode === 'register' ? '注册' : '重置密码' }}
+          </button>
+
+          <div class="switches">
+            <template v-if="mode === 'login'">
+              <button type="button" @click="mode = 'register'; error = ''">注册一个</button>
+              <button type="button" @click="mode = 'recover'; error = ''">忘记密码</button>
+            </template>
+            <template v-else>
+              <button type="button" @click="mode = 'login'; error = ''">回到登录</button>
+            </template>
+          </div>
+        </form>
+      </div>
     </div>
   </Transition>
 </template>
@@ -135,6 +181,12 @@ h2 {
   line-height: 1.6;
 }
 
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 label {
   display: flex;
   flex-direction: column;
@@ -177,14 +229,40 @@ input:focus {
   opacity: 0.6;
 }
 
-.switch {
-  margin: 4px 0 0;
+.ghost {
+  min-height: 40px;
+  border-radius: 9px;
+  border: 1px dashed var(--line-strong);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.ghost:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
+.code {
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
   text-align: center;
+}
+
+.switches {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
   color: var(--muted);
   font-size: 0.78rem;
 }
 
-.switch button {
+.switches button {
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 3px;

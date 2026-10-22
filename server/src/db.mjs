@@ -70,7 +70,30 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_key);
   CREATE INDEX IF NOT EXISTS idx_comments_song ON song_comments(song_key);
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+  CREATE TABLE IF NOT EXISTS assets (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('book','track')),
+    title TEXT NOT NULL,
+    subtitle TEXT NOT NULL DEFAULT '',
+    size INTEGER NOT NULL,
+    mime TEXT NOT NULL,
+    stored_name TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind, created_at);
 `)
+
+/* 老库补列：恢复码 */
+const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map((column) => column.name))
+if (!userColumns.has('recovery_hash')) {
+  db.exec('ALTER TABLE users ADD COLUMN recovery_hash TEXT')
+}
+if (!userColumns.has('recovery_salt')) {
+  db.exec('ALTER TABLE users ADD COLUMN recovery_salt TEXT')
+}
 
 export function rows(sql, params = []) {
   return db.prepare(sql).all(...params)

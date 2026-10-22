@@ -85,6 +85,7 @@ featured: false
 | 4 | 写作台（本地草稿、Markdown 预览、自动保存、导出 .md） | 已完成 |
 | 5 | 账号系统 + 收藏夹（自建后端、公开可见、带用户名） | 已完成 |
 | 6 | 书签与评论（公开书签带留言、云端歌评论、本地评论仅本机） | 已完成 |
-| 7 | 部署：自建服务器（nginx/Caddy + rsync） | 待开始 |
+| 7 | 云端存储（书 / 音乐上传下载、Range 流式播放、恢复码） | 已完成 |
+| 8 | 部署：自建服务器（nginx/Caddy + rsync） | 待开始 |
 
 详见 [docs/deploy.md](docs/deploy.md) 与 [docs/adr](docs/adr/)。

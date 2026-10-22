@@ -1,23 +1,32 @@
 import { createServer } from 'node:http'
-import { existsSync, createReadStream, statSync } from 'node:fs'
+import { existsSync, createReadStream, createWriteStream, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
 import { extname, join, normalize, resolve, dirname } from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { row, rows, run } from './db.mjs'
 import {
   clearCookie,
   createSession,
   destroySession,
+  generateRecoveryCode,
+  hashPassword,
   makeUser,
   newId,
   sessionCookie,
+  setRecoveryCode,
   userFromRequest,
   verifyPassword,
+  verifyRecoveryCode,
 } from './auth.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DIST = resolve(ROOT, '../web/dist')
+const FILES_DIR = resolve(ROOT, 'data/files')
 const MAX_BODY = 64 * 1024
+const UPLOAD_LIMITS = { book: 20 * 1024 * 1024, track: 40 * 1024 * 1024 }
+
+mkdirSync(FILES_DIR, { recursive: true })
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -102,7 +111,36 @@ route('POST', '/api/auth/register', async (req, res) => {
 
   const user = makeUser(username, displayName, password)
   const session = createSession(user.id)
-  send(res, 201, { user: publicUser({ ...user, display_name: displayName }) }, { 'Set-Cookie': sessionCookie(session.id, 30 * 24 * 3600) })
+  send(res, 201, {
+    user: publicUser({ ...user, display_name: displayName }),
+    recoveryCode: user.recoveryCode,
+  }, { 'Set-Cookie': sessionCookie(session.id, 30 * 24 * 3600) })
+})
+
+route('POST', '/api/auth/recover', async (req, res) => {
+  const body = await readBody(req)
+  const username = String(body.username ?? '').trim().toLowerCase()
+  const code = String(body.code ?? '').trim()
+  const password = String(body.password ?? '')
+  const user = row('SELECT * FROM users WHERE username = ?', [username])
+  if (!user || !verifyRecoveryCode(user, code)) return fail(res, 401, '用户名或恢复码不对')
+  if (password.length < 6) return fail(res, 400, '密码至少 6 位')
+
+  const { hash, salt } = hashPassword(password)
+  run('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?', [hash, salt, user.id])
+  const recoveryCode = generateRecoveryCode()
+  setRecoveryCode(user.id, recoveryCode)
+  // 恢复后旧会话全部作废
+  run('DELETE FROM sessions WHERE user_id = ?', [user.id])
+  send(res, 200, { ok: true, recoveryCode })
+})
+
+route('POST', '/api/auth/recovery-code', async (req, res) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const recoveryCode = generateRecoveryCode()
+  setRecoveryCode(user.id, recoveryCode)
+  send(res, 200, { recoveryCode })
 })
 
 route('POST', '/api/auth/login', async (req, res) => {
@@ -349,6 +387,132 @@ route('DELETE', '/api/songs/:key/comments/:id', async (req, res, params) => {
   if (!comment) return fail(res, 404, '评论不存在')
   if (comment.user_id !== user.id) return fail(res, 403, '只能删自己的评论')
   run('DELETE FROM song_comments WHERE id = ?', [params.id])
+  send(res, 200, { ok: true })
+})
+
+/* 云端文件（书 / 音乐） */
+
+const EXT_BY_MIME = {
+  'text/plain': '.txt',
+  'text/markdown': '.md',
+  'audio/mpeg': '.mp3',
+  'audio/mp4': '.m4a',
+  'audio/aac': '.aac',
+  'audio/flac': '.flac',
+  'audio/wav': '.wav',
+  'audio/ogg': '.ogg',
+  'audio/webm': '.webm',
+}
+
+route('GET', '/api/assets', async (req, res, _params, url) => {
+  const kind = url.searchParams.get('kind') === 'track' ? 'track' : 'book'
+  const list = rows(
+    `SELECT a.id, a.kind, a.title, a.subtitle, a.size, a.mime, a.created_at, u.username, u.display_name
+     FROM assets a JOIN users u ON u.id = a.owner_id
+     WHERE a.kind = ? ORDER BY a.created_at DESC LIMIT 300`,
+    [kind],
+  )
+  const user = userFromRequest(req)
+  send(res, 200, {
+    assets: list.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      subtitle: item.subtitle,
+      size: item.size,
+      mime: item.mime,
+      createdAt: item.created_at,
+      owner: { username: item.username, displayName: item.display_name },
+      mine: user?.username === item.username,
+    })),
+  })
+})
+
+route('POST', '/api/assets', async (req, res, _params, url) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const kind = url.searchParams.get('kind')
+  if (kind !== 'book' && kind !== 'track') return fail(res, 400, 'kind 只能是 book 或 track')
+  const size = Number(req.headers['content-length'] ?? 0)
+  if (!size) return fail(res, 400, '缺少文件内容')
+  if (size > UPLOAD_LIMITS[kind]) {
+    return fail(res, 413, `文件超过上限（${kind === 'book' ? '20MB' : '40MB'}）`)
+  }
+  const title = decodeURIComponent(String(req.headers['x-title'] ?? '')).trim().slice(0, 120)
+  const subtitle = decodeURIComponent(String(req.headers['x-subtitle'] ?? '')).trim().slice(0, 120)
+  if (!title) return fail(res, 400, '缺少标题')
+
+  const mime = String(req.headers['content-type'] ?? 'application/octet-stream').split(';')[0]
+  const fallbackExt = extname(decodeURIComponent(String(req.headers['x-filename'] ?? ''))).slice(0, 8)
+  const ext = EXT_BY_MIME[mime] ?? (fallbackExt || '.bin')
+  const id = newId('a')
+  const storedName = `${id}${ext}`
+  const temp = join(FILES_DIR, `${storedName}.part`)
+  const target = join(FILES_DIR, storedName)
+
+  try {
+    await pipeline(req, createWriteStream(temp))
+    renameSync(temp, target)
+  } catch {
+    try {
+      unlinkSync(temp)
+    } catch {
+      // ignore
+    }
+    return fail(res, 400, '写入文件失败')
+  }
+
+  run(
+    'INSERT INTO assets (id, owner_id, kind, title, subtitle, size, mime, stored_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, user.id, kind, title, subtitle, size, mime, storedName, Date.now()],
+  )
+  send(res, 201, { id })
+})
+
+route('GET', '/api/assets/:id/file', async (req, res, params) => {
+  const asset = row('SELECT * FROM assets WHERE id = ?', [params.id])
+  if (!asset) return fail(res, 404, '文件不存在')
+  const file = join(FILES_DIR, asset.stored_name)
+  if (!existsSync(file)) return fail(res, 410, '文件已丢失')
+  const total = statSync(file).size
+  const headers = {
+    'Content-Type': asset.mime,
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'public, max-age=86400',
+  }
+  if (asset.kind === 'book') {
+    headers['Content-Disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(asset.title + extname(asset.stored_name))}`
+  }
+
+  const range = req.headers.range
+  if (range) {
+    const match = /bytes=(\d*)-(\d*)/.exec(range)
+    const start = Math.max(0, Math.min(Number(match?.[1] || 0), total - 1))
+    const end = Math.max(start, Math.min(Number(match?.[2] || total - 1), total - 1))
+    res.writeHead(206, {
+      ...headers,
+      'Content-Range': `bytes ${start}-${end}/${total}`,
+      'Content-Length': end - start + 1,
+    })
+    createReadStream(file, { start, end }).pipe(res)
+    return
+  }
+  res.writeHead(200, { ...headers, 'Content-Length': total })
+  createReadStream(file).pipe(res)
+})
+
+route('DELETE', '/api/assets/:id', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const asset = row('SELECT owner_id, stored_name FROM assets WHERE id = ?', [params.id])
+  if (!asset) return fail(res, 404, '文件不存在')
+  if (asset.owner_id !== user.id) return fail(res, 403, '只能删自己上传的文件')
+  run('DELETE FROM assets WHERE id = ?', [params.id])
+  try {
+    unlinkSync(join(FILES_DIR, asset.stored_name))
+  } catch {
+    // 文件可能已不在
+  }
   send(res, 200, { ok: true })
 })
 
