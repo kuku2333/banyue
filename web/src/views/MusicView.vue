@@ -45,6 +45,8 @@ const cloudError = ref('')
 const storage = ref<StorageUsage | null>(null)
 const syncing = ref(false)
 const syncProgress = ref('')
+const downloading = ref(false)
+const downloadProgress = ref('')
 
 const cloudList = computed<Track[]>(() =>
   cloudTracks.value.map((asset) => ({
@@ -131,6 +133,77 @@ async function syncAllToCloud(): Promise<void> {
     syncing.value = false
     syncProgress.value = ''
   }
+}
+
+/** 云端一首歌下到本地库（按内容指纹去重），返回结果 */
+async function saveCloudTrackToLocal(asset: CloudAsset): Promise<'added' | 'skipped'> {
+  if (asset.hash && (await findTrackByHash(asset.hash))) return 'skipped'
+  const response = await fetch(assetUrl(asset.id))
+  if (!response.ok) throw new Error(`下载失败（${response.status}）`)
+  const blob = await response.blob()
+  await addTrack({
+    id: asset.hash || `cloud-${asset.id}`,
+    title: asset.title.replace(/\.[^.]+$/, ''),
+    artist: asset.subtitle || '云端下载',
+    size: asset.size,
+    hash: asset.hash || '',
+    createdAt: Date.now(),
+    data: blob,
+  })
+  return 'added'
+}
+
+/** 云端单曲下载到本地 */
+async function downloadToLocal(asset: CloudAsset): Promise<void> {
+  if (cloudBusy.value === asset.id) return
+  cloudBusy.value = asset.id
+  cloudError.value = ''
+  try {
+    const result = await saveCloudTrackToLocal(asset)
+    if (result === 'skipped') {
+      message.value = `《${asset.title}》本地已有，跳过`
+    } else {
+      await refreshLocal()
+      message.value = `《${asset.title}》已下载到本地`
+    }
+    setTimeout(() => (message.value = ''), 3000)
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    cloudBusy.value = ''
+  }
+}
+
+/** 一键下载：云端全部歌下到本地，本地已有的按指纹跳过 */
+async function downloadAllToLocal(): Promise<void> {
+  if (downloading.value) return
+  if (!cloudTracks.value.length) {
+    message.value = '云端还没有音乐'
+    setTimeout(() => (message.value = ''), 3000)
+    return
+  }
+  downloading.value = true
+  downloadProgress.value = '准备中…'
+  cloudError.value = ''
+  let downloaded = 0
+  let skipped = 0
+  let failed = 0
+  for (let i = 0; i < cloudTracks.value.length; i++) {
+    const asset = cloudTracks.value[i]!
+    downloadProgress.value = `下载中 ${i + 1}/${cloudTracks.value.length}`
+    try {
+      const result = await saveCloudTrackToLocal(asset)
+      if (result === 'skipped') skipped++
+      else downloaded++
+    } catch {
+      failed++
+    }
+  }
+  await refreshLocal()
+  message.value = `下载完成：新增 ${downloaded} · 跳过 ${skipped} · 失败 ${failed}`
+  setTimeout(() => (message.value = ''), 5000)
+  downloading.value = false
+  downloadProgress.value = ''
 }
 
 const localTracks = computed<Track[]>(() =>
@@ -445,9 +518,19 @@ onMounted(() => {
           >
             {{ syncing ? (syncProgress || '同步中…') : '一键同步' }}
           </button>
+          <button
+            type="button"
+            class="btn small-btn"
+            :disabled="downloading"
+            title="云端全部歌下载到本地（本地已有的跳过）"
+            @click="downloadAllToLocal"
+          >
+            {{ downloading ? (downloadProgress || '下载中…') : '一键下载' }}
+          </button>
           <button type="button" class="btn small-btn" @click="loadCloud">刷新</button>
         </div>
       </div>
+      <p v-if="message" class="notice">{{ message }}</p>
       <p v-if="cloudError" class="notice">{{ cloudError }}</p>
       <p v-if="cloudLoading" class="muted small">加载中…</p>
       <ol v-else-if="cloudList.length" class="track-list">
@@ -464,6 +547,15 @@ onMounted(() => {
           </div>
           <button type="button" class="play" @click="playFrom(cloudList, index)">
             {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
+          </button>
+          <button
+            type="button"
+            class="cloud-btn"
+            :disabled="cloudBusy === cloudTracks[index]?.id"
+            title="下载到本地（本地已有同文件会跳过）"
+            @click="cloudTracks[index] && downloadToLocal(cloudTracks[index]!)"
+          >
+            {{ cloudBusy === cloudTracks[index]?.id ? '下载中…' : '下载' }}
           </button>
           <button
             v-if="cloudTracks[index]?.mine || auth.user?.isAdmin"

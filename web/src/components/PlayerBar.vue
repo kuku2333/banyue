@@ -13,7 +13,7 @@ const pickerOpen = ref(false)
 const commentsOpen = ref(false)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const orbCanvas = ref<HTMLCanvasElement | null>(null)
-const pos = useStorage('banyue:player:pos', { right: 20, bottom: 20 })
+const pos = useStorage('banyue:player:pos', { right: 16, bottom: 96 })
 const dragging = ref(false)
 let draggedDistance = 0
 
@@ -57,8 +57,11 @@ function startDrag(event: PointerEvent): void {
   draggedDistance = 0
   startX = event.clientX
   startY = event.clientY
-  baseRight = pos.value.right
-  baseBottom = pos.value.bottom
+  // 存储的位置可能越界（换设备、屏幕变小），先校正到可视区内，否则拖动会被 clamp 卡死
+  const bounds = dragBounds()
+  baseRight = clamp(pos.value.right, 8, bounds.maxRight)
+  baseBottom = clamp(pos.value.bottom, 8, bounds.maxBottom)
+  pos.value = { right: baseRight, bottom: baseBottom }
   window.addEventListener('pointermove', onDrag)
   window.addEventListener('pointerup', endDrag)
   // 手机上手指移出元素/被系统打断时也要收尾，否则拖动会「粘住」
@@ -232,14 +235,28 @@ function onGlobalKeydown(event: KeyboardEvent): void {
   }
 }
 
+/** 面板在屏内时，把存储的位置校正回可视区（换设备/地址栏收起/旋转后旧位置可能越界） */
+function correctPosition(): void {
+  const el = document.querySelector('.player') ?? document.querySelector('.orb')
+  if (!el) return
+  const bounds = dragBounds()
+  pos.value = {
+    right: clamp(pos.value.right, 8, bounds.maxRight),
+    bottom: clamp(pos.value.bottom, 8, bounds.maxBottom),
+  }
+}
+
 onMounted(() => {
   raf = requestAnimationFrame(drawSpectrum)
   window.addEventListener('keydown', onGlobalKeydown)
+  correctPosition()
+  window.addEventListener('resize', correctPosition)
 })
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf)
   window.removeEventListener('keydown', onGlobalKeydown)
+  window.removeEventListener('resize', correctPosition)
   endDrag()
 })
 </script>
