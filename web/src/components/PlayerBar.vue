@@ -3,12 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useStorage, useWindowSize } from '@vueuse/core'
 import { PLAY_MODES, usePlayerStore } from '@/stores/player'
 import CollectionPicker from '@/components/CollectionPicker.vue'
+import CommentsPanel from '@/components/CommentsPanel.vue'
 import { formatTime } from '@/lib/music'
 import { hashCode } from '@/lib/cover'
 
 const player = usePlayerStore()
 const queueOpen = ref(false)
 const pickerOpen = ref(false)
+const commentsOpen = ref(false)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const orbCanvas = ref<HTMLCanvasElement | null>(null)
 const pos = useStorage('banyue:player:pos', { right: 20, bottom: 20 })
@@ -386,6 +388,7 @@ onBeforeUnmount(() => {
           >{{ modeInfo.label }}
         </button>
         <button type="button" class="p-mode" @click="pickerOpen = true">加入歌单</button>
+        <button type="button" class="p-mode" @click="commentsOpen = true">评论</button>
         <label class="p-vol">
           <svg
             viewBox="0 0 24 24"
@@ -440,6 +443,8 @@ onBeforeUnmount(() => {
     :item="player.current ? { key: player.current.id, title: player.current.title, subtitle: player.current.artist } : null"
     @update:open="pickerOpen = $event"
   />
+
+  <CommentsPanel :open="commentsOpen" :track="player.current" @update:open="commentsOpen = $event" />
 </template>
 
 <style scoped>

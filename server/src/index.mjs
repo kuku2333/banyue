@@ -342,6 +342,16 @@ route('POST', '/api/songs/:key/comments', async (req, res, params) => {
   send(res, 201, { id })
 })
 
+route('DELETE', '/api/songs/:key/comments/:id', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const comment = row('SELECT user_id FROM song_comments WHERE id = ? AND song_key = ?', [params.id, params.key])
+  if (!comment) return fail(res, 404, '评论不存在')
+  if (comment.user_id !== user.id) return fail(res, 403, '只能删自己的评论')
+  run('DELETE FROM song_comments WHERE id = ?', [params.id])
+  send(res, 200, { ok: true })
+})
+
 /* ---------------- 静态文件 ---------------- */
 
 function serveStatic(req, res, url) {

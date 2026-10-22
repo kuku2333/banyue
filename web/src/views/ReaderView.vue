@@ -5,12 +5,15 @@ import { toParagraphs } from '@/lib/books'
 import { getBook, saveProgress, type BookRecord } from '@/lib/db'
 import { useReaderStore, READER_THEMES } from '@/stores/reader'
 import { usePlayerStore } from '@/stores/player'
+import { bookKeyFor } from '@/lib/keys'
+import BookmarkPanel from '@/components/BookmarkPanel.vue'
 import type { Chapter } from '@/lib/books'
 
 const route = useRoute()
 const router = useRouter()
 const settings = useReaderStore()
 const player = usePlayerStore()
+const bookmarkOpen = ref(false)
 
 const bookId = computed(() => String(route.params.id ?? ''))
 const book = ref<BookRecord | null>(null)
@@ -51,6 +54,12 @@ const overallProgress = computed(() => {
   return Math.min(1, (chapterIndex.value + within) / chapters.value.length)
 })
 const themeClass = computed(() => `theme-${settings.theme}`)
+const bookmarkKey = computed(() =>
+  book.value ? bookKeyFor({ title: book.value.title, author: book.value.author, words: book.value.words }) : '',
+)
+const bookmarkRatio = computed(() =>
+  settings.mode === 'paged' ? pageIndex.value / Math.max(pageCount.value, 1) : scrollRatio.value,
+)
 const contentStyle = computed(() => ({
   fontSize: `${settings.fontSize}px`,
   lineHeight: String(settings.lineHeight),
@@ -370,9 +379,10 @@ function onKeydown(event: KeyboardEvent): void {
       void turn(1)
       break
     case 'Escape':
-      if (tocOpen.value || settingsOpen.value) {
+      if (tocOpen.value || settingsOpen.value || bookmarkOpen.value) {
         tocOpen.value = false
         settingsOpen.value = false
+        bookmarkOpen.value = false
       } else {
         void router.push('/shelf')
       }
@@ -432,6 +442,9 @@ onBeforeUnmount(() => {
         <span>{{ chapterIndex + 1 }} / {{ chapters.length }} · {{ chapter?.title }}</span>
       </div>
       <div class="r-actions">
+        <button type="button" class="r-btn" :class="{ on: bookmarkOpen }" @click="bookmarkOpen = !bookmarkOpen">
+          书签
+        </button>
         <button type="button" class="r-btn" :class="{ on: tocOpen }" @click="tocOpen = !tocOpen">目录</button>
         <button
           type="button"
@@ -644,6 +657,16 @@ onBeforeUnmount(() => {
         <p class="hint">← → 翻页 · 空格下一页 · Esc 退出 · 也可以按住页面左右拖动</p>
       </aside>
     </Transition>
+
+    <BookmarkPanel
+      :open="bookmarkOpen"
+      :book-key="bookmarkKey"
+      :chapter="chapterIndex"
+      :chapter-title="chapter?.title ?? ''"
+      :ratio="bookmarkRatio"
+      @update:open="bookmarkOpen = $event"
+      @jump="jumpTo"
+    />
   </div>
 </template>
 

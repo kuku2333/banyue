@@ -42,11 +42,30 @@ export interface DraftRecord {
   updatedAt: number
 }
 
+export interface LocalBookmark {
+  id: string
+  bookKey: string
+  chapter: number
+  chapterTitle: string
+  ratio: number
+  note: string
+  createdAt: number
+}
+
+export interface LocalSongNote {
+  id: string
+  trackId: string
+  body: string
+  createdAt: number
+}
+
 class BanyueDatabase extends Dexie {
   books!: Table<BookRecord, string>
   texts!: Table<TextRecord, string>
   tracks!: Table<TrackRecord, string>
   drafts!: Table<DraftRecord, string>
+  localBookmarks!: Table<LocalBookmark, string>
+  songNotes!: Table<LocalSongNote, string>
 
   constructor() {
     super('banyue-reader')
@@ -57,6 +76,10 @@ class BanyueDatabase extends Dexie {
     })
     this.version(2).stores({
       drafts: 'id, updatedAt',
+    })
+    this.version(3).stores({
+      localBookmarks: 'id, bookKey',
+      songNotes: 'id, trackId',
     })
   }
 }
@@ -146,4 +169,30 @@ export async function putDraft(draft: DraftRecord): Promise<void> {
 
 export async function deleteDraft(id: string): Promise<void> {
   await db().drafts.delete(id)
+}
+
+/* ---------------- 本地书签与本地评论（不上传） ---------------- */
+
+export async function listLocalBookmarks(bookKey: string): Promise<LocalBookmark[]> {
+  return db().localBookmarks.where('bookKey').equals(bookKey).sortBy('chapter')
+}
+
+export async function addLocalBookmark(bookmark: LocalBookmark): Promise<void> {
+  await db().localBookmarks.put(bookmark)
+}
+
+export async function deleteLocalBookmark(id: string): Promise<void> {
+  await db().localBookmarks.delete(id)
+}
+
+export async function listSongNotes(trackId: string): Promise<LocalSongNote[]> {
+  return (await db().songNotes.where('trackId').equals(trackId).toArray()).sort((a, b) => b.createdAt - a.createdAt)
+}
+
+export async function addSongNote(note: LocalSongNote): Promise<void> {
+  await db().songNotes.put(note)
+}
+
+export async function deleteSongNote(id: string): Promise<void> {
+  await db().songNotes.delete(id)
 }
