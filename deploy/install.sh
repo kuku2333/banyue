@@ -83,7 +83,8 @@ fi
 log "构建前端（web/dist）..."
 cd "$APP_DIR/web"
 if [[ ! -d node_modules ]]; then
-  pnpm install --frozen-lockfile || pnpm install
+  # --ignore-scripts：pnpm 10+ 拦截 esbuild 等依赖的 postinstall，二进制随包自带不影响
+  pnpm install --frozen-lockfile --ignore-scripts || pnpm install --ignore-scripts
 fi
 pnpm build
 cd "$APP_DIR"

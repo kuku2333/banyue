@@ -41,7 +41,13 @@ fi
 log "安装依赖并构建前端..."
 cd "$APP_DIR/web"
 command -v pnpm >/dev/null || die "未找到 pnpm，请先跑 deploy/install.sh"
-pnpm install --frozen-lockfile || pnpm install
+# --ignore-scripts：跳过 esbuild 等依赖的 postinstall（pnpm 10+ 默认拦截，二进制随包自带不影响）
+# 已有 node_modules 时 install 失败不阻断：更新代码一般不改依赖
+if [[ -d node_modules ]]; then
+  pnpm install --frozen-lockfile --ignore-scripts || log "依赖安装跳过，用现有 node_modules 继续"
+else
+  pnpm install --frozen-lockfile --ignore-scripts || pnpm install --ignore-scripts || die "依赖安装失败"
+fi
 pnpm build
 cd "$APP_DIR"
 
