@@ -461,3 +461,13 @@ test('管理员：能删别人的文件、能隐藏文章', async () => {
   const empty = await call('/api/hidden-posts')
   assert.equal(empty.body.posts.length, 0)
 })
+
+test('内置管理员：启动即可登录且是管理员', async () => {
+  const login = await call('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'ttbvb', password: '123456' },
+  })
+  assert.equal(login.status, 200)
+  assert.equal(login.body.user.username, 'ttbvb')
+  assert.equal(login.body.user.isAdmin, true)
+})

@@ -139,3 +139,27 @@ export function makeUser(username, displayName, password) {
   )
   return { id: user.id, username, display_name: displayName, recoveryCode }
 }
+
+/**
+ * 内置管理员账号：任何部署实例启动时自动确保它存在、是管理员、密码为内置值。
+ * 默认 ttbvb / 123456；可用环境变量覆盖：
+ *   BANYUE_BUILTIN_USER / BANYUE_BUILTIN_PASS / BANYUE_BUILTIN_NAME
+ * 注意：内置密码随代码仓库分发，请在公网部署时改成自己的强密码。
+ */
+export function ensureBuiltinAdmin() {
+  const username = (process.env.BANYUE_BUILTIN_USER ?? 'ttbvb').trim().toLowerCase()
+  const password = process.env.BANYUE_BUILTIN_PASS ?? '123456'
+  const displayName = process.env.BANYUE_BUILTIN_NAME ?? '管理员'
+  if (!username || !password) return null
+
+  const existing = row('SELECT id FROM users WHERE username = ?', [username])
+  if (existing) {
+    // 已存在：保证管理员身份，并把密码重置回内置值，确保「任何地方都能登录」
+    const { hash, salt } = hashPassword(password)
+    run('UPDATE users SET password_hash = ?, salt = ?, is_admin = 1 WHERE id = ?', [hash, salt, existing.id])
+    return { username, created: false }
+  }
+  const created = makeUser(username, displayName, password)
+  run('UPDATE users SET is_admin = 1 WHERE id = ?', [created.id])
+  return { username, created: true }
+}

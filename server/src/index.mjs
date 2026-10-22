@@ -10,6 +10,7 @@ import {
   contentHash,
   createSession,
   destroySession,
+  ensureBuiltinAdmin,
   generateRecoveryCode,
   hashPassword,
   isEnvAdmin,
@@ -872,8 +873,12 @@ const server = createServer((req, res) => {
   })
 })
 
+const builtin = ensureBuiltinAdmin()
 server.listen(PORT, () => {
   console.log(`banyue api on http://localhost:${PORT}  (static: ${existsSync(DIST) ? DIST : 'none'})`)
+  if (builtin) {
+    console.log(`内置管理员：${builtin.username}${builtin.created ? '（已创建）' : '（已确保可登录）'}`)
+  }
 })
 
 // 过期会话只会在被访问时删除，长期运行会越攒越多；定期清一次

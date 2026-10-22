@@ -13,6 +13,22 @@ BANYUE_FILES_DIR=/path/files node src/index.mjs   # 上传文件目录（默认 
 环境变量：`PORT`（端口）、`BANYUE_DB`（数据库路径）、`BANYUE_FILES_DIR`（上传文件目录）、
 `BANYUE_QUOTA_MB`（每账号容量）、`BANYUE_ADMINS`（管理员用户名，逗号分隔）。
 
+## 内置管理员账号
+
+服务启动时会自动确保一个内置管理员存在（默认 `ttbvb` / `123456`），**任何部署实例启动后都能用它登录**，
+且该账号始终是管理员；已存在时每次启动会把密码重置回内置值（内置账号语义，保证到处可登）。
+
+可用环境变量覆盖：
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `BANYUE_BUILTIN_USER` | `ttbvb` | 内置账号用户名 |
+| `BANYUE_BUILTIN_PASS` | `123456` | 内置账号密码 |
+| `BANYUE_BUILTIN_NAME` | `管理员` | 显示昵称 |
+
+> ⚠️ **安全警告**：内置密码随代码仓库分发，公网部署时请务必用 `BANYUE_BUILTIN_PASS`
+> 设置为强密码（systemd 服务里加一行 Environment 即可），否则任何访问者都能用默认密码登录管理员。
+
 前端开发时 Vite 已把 `/api` 代理到 `127.0.0.1:8787`（见 `web/vite.config.ts`）。
 生产环境同一个进程也能直接托管 `web/dist`（存在时自动启用，SPA 回退到 `index.html`）。
 
