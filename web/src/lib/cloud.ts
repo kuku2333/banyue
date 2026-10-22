@@ -12,6 +12,19 @@ export interface CloudAsset {
   mine: boolean
 }
 
+export interface StorageUsage {
+  used: number
+  quota: number
+}
+
+export async function getStorage(): Promise<StorageUsage | null> {
+  try {
+    return await api<StorageUsage>('/api/storage')
+  } catch {
+    return null
+  }
+}
+
 export function assetUrl(id: string): string {
   return `/api/assets/${encodeURIComponent(id)}/file`
 }

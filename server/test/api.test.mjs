@@ -29,7 +29,7 @@ async function call(path, { method = 'GET', body, cookie } = {}) {
 
 before(async () => {
   server = spawn(process.execPath, ['src/index.mjs'], {
-    env: { ...process.env, PORT: String(PORT), BANYUE_DB: join(dir, 'test.db') },
+    env: { ...process.env, PORT: String(PORT), BANYUE_DB: join(dir, 'test.db'), BANYUE_QUOTA_MB: '2' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   await new Promise((resolve, reject) => {
@@ -187,6 +187,41 @@ test('恢复码：可重置密码、旧密码失效、旧会话作废', async ()
   assert.equal(oldPassword.status, 401)
   const newPassword = await call('/api/auth/login', { method: 'POST', body: { username: 'carol', password: 'newsecret' } })
   assert.equal(newPassword.status, 200)
+})
+
+test('云端配额：超过总容量拒绝，删除后释放', async () => {
+  const registered = await call('/api/auth/register', {
+    method: 'POST',
+    body: { username: 'erin', password: 'secret123', displayName: '艾琳' },
+  })
+  const cookie = registered.cookie
+  const chunk = 'x'.repeat(1_200_000)
+
+  const first = await fetch(`${BASE}/api/assets?kind=book`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', 'x-title': 'big-one', cookie },
+    body: chunk,
+  })
+  assert.equal(first.status, 201)
+  const firstId = (await first.json()).id
+
+  const usage = await call('/api/storage', { cookie })
+  assert.equal(usage.status, 200)
+  assert.equal(usage.body.quota, 2 * 1024 * 1024)
+  assert.ok(usage.body.used >= 1_200_000)
+
+  const second = await fetch(`${BASE}/api/assets?kind=book`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', 'x-title': 'big-two', cookie },
+    body: chunk,
+  })
+  assert.equal(second.status, 413)
+  assert.match((await second.json()).error, /空间不够/)
+
+  const removed = await call(`/api/assets/${firstId}`, { method: 'DELETE', cookie })
+  assert.equal(removed.status, 200)
+  const after = await call('/api/storage', { cookie })
+  assert.equal(after.body.used, 0)
 })
 
 test('云端文件：登录上传、公开列表、原样下载、只有作者能删', async () => {

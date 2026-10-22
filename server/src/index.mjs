@@ -25,8 +25,15 @@ const DIST = resolve(ROOT, '../web/dist')
 const FILES_DIR = resolve(ROOT, 'data/files')
 const MAX_BODY = 64 * 1024
 const UPLOAD_LIMITS = { book: 20 * 1024 * 1024, track: 40 * 1024 * 1024 }
+/** 每个账号的云端总容量（MB），默认 200 */
+const QUOTA_BYTES = Math.max(1, Number(process.env.BANYUE_QUOTA_MB ?? 200)) * 1024 * 1024
 
 mkdirSync(FILES_DIR, { recursive: true })
+
+function storageUsed(userId) {
+  const rowData = row('SELECT COALESCE(SUM(size), 0) AS used FROM assets WHERE owner_id = ?', [userId])
+  return Number(rowData?.used ?? 0)
+}
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -404,6 +411,13 @@ const EXT_BY_MIME = {
   'audio/webm': '.webm',
 }
 
+route('GET', '/api/storage', async (req, res) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const used = storageUsed(user.id)
+  send(res, 200, { used, quota: QUOTA_BYTES })
+})
+
 route('GET', '/api/assets', async (req, res, _params, url) => {
   const kind = url.searchParams.get('kind') === 'track' ? 'track' : 'book'
   const list = rows(
@@ -437,6 +451,16 @@ route('POST', '/api/assets', async (req, res, _params, url) => {
   if (!size) return fail(res, 400, '缺少文件内容')
   if (size > UPLOAD_LIMITS[kind]) {
     return fail(res, 413, `文件超过上限（${kind === 'book' ? '20MB' : '40MB'}）`)
+  }
+
+  const used = storageUsed(user.id)
+  if (used + size > QUOTA_BYTES) {
+    const left = Math.max(0, QUOTA_BYTES - used)
+    return fail(
+      res,
+      413,
+      `云端空间不够：已用 ${(used / 1048576).toFixed(1)}MB / ${(QUOTA_BYTES / 1048576).toFixed(0)}MB，还剩 ${(left / 1048576).toFixed(1)}MB`,
+    )
   }
   const title = decodeURIComponent(String(req.headers['x-title'] ?? '')).trim().slice(0, 120)
   const subtitle = decodeURIComponent(String(req.headers['x-subtitle'] ?? '')).trim().slice(0, 120)

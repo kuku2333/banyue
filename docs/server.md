@@ -56,7 +56,9 @@ BANYUE_DB=/path/db.sqlite node src/index.mjs
 | POST | `/api/auth/recover` | 恢复码重置密码：`{username, code, password}` |
 | POST | `/api/auth/recovery-code` | 登录后重新生成恢复码 |
 
-上传体积上限：书 20MB、音乐 40MB；文件落在 `server/data/files/`，数据库只存元信息。
+上传体积上限：书 20MB、音乐 40MB；**每个账号默认总共 200MB**（`BANYUE_QUOTA_MB` 可调），
+超出返回 413 并提示剩余空间。文件落在 `server/data/files/`，数据库只存元信息；
+`GET /api/storage` 返回当前账号的 `{ used, quota }`。
 
 ## 安全边界
 

@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { usePlayerStore } from '@/stores/player'
 import { REGIONS, fetchTopSongs, fingerprint, formatTime, isAudioFile, searchSongs, type Region, type Track } from '@/lib/music'
 import { addTrack, deleteTrack, findTrackByHash, getTrackBlob, listTracks, type TrackRecord } from '@/lib/db'
-import { assetUrl, deleteAsset, formatSize, listAssets, uploadAsset, type CloudAsset } from '@/lib/cloud'
+import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import { BILI_HOT, BILI_SNAP } from '@/lib/bili'
 import { formatCount } from '@/lib/format'
 
@@ -40,6 +40,7 @@ const cloudTracks = ref<CloudAsset[]>([])
 const cloudLoading = ref(false)
 const cloudBusy = ref('')
 const cloudError = ref('')
+const storage = ref<StorageUsage | null>(null)
 
 const cloudList = computed<Track[]>(() =>
   cloudTracks.value.map((asset) => ({
@@ -55,7 +56,9 @@ async function loadCloud(): Promise<void> {
   cloudLoading.value = true
   cloudError.value = ''
   try {
-    cloudTracks.value = await listAssets('track')
+    const [tracks, usage] = await Promise.all([listAssets('track'), getStorage()])
+    cloudTracks.value = tracks
+    storage.value = usage
   } catch (err) {
     cloudError.value = (err as Error).message
   } finally {
@@ -385,7 +388,10 @@ onMounted(() => {
     <!-- 云端音乐 -->
     <section v-else-if="tab === 'cloud'" class="panel">
       <div class="row-head">
-        <span class="muted small">云端共 {{ cloudTracks.length }} 首 · 所有人可听</span>
+        <span class="muted small">
+          云端共 {{ cloudTracks.length }} 首 · 所有人可听
+          <template v-if="storage"> · 我的空间已用 {{ formatSize(storage.used) }} / {{ formatSize(storage.quota) }}</template>
+        </span>
         <button type="button" class="btn small-btn" @click="loadCloud">刷新</button>
       </div>
       <p v-if="cloudError" class="notice">{{ cloudError }}</p>

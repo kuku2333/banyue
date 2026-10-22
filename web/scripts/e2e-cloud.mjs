@@ -128,6 +128,7 @@ await evaluate("document.querySelector('.book-cloud')?.click()")
 await wait(2000)
 console.log('cloud books:', await evaluate("document.querySelectorAll('.cloud-list li').length"))
 console.log('cloud owner:', await evaluate("document.querySelector('.cloud-main span')?.textContent?.trim() ?? 'none'"))
+console.log('storage line:', await evaluate("document.querySelector('.cloud-head .muted')?.textContent?.replace(/\\s+/g, ' ').trim() ?? 'none'"))
 await shot('shelf-cloud')
 
 // 3) 下载回书架

@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useShelfStore } from '@/stores/shelf'
 import CollectionPicker from '@/components/CollectionPicker.vue'
-import { assetUrl, deleteAsset, formatSize, listAssets, uploadAsset, type CloudAsset } from '@/lib/cloud'
+import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import { cleanBookText, decodeText, splitChapters } from '@/lib/books'
 import { getBook, putBook } from '@/lib/db'
 import { formatDate } from '@/lib/format'
@@ -20,12 +20,15 @@ const cloudBooks = ref<CloudAsset[]>([])
 const cloudLoading = ref(false)
 const cloudBusy = ref('')
 const cloudError = ref('')
+const storage = ref<StorageUsage | null>(null)
 
 async function loadCloud(): Promise<void> {
   cloudLoading.value = true
   cloudError.value = ''
   try {
-    cloudBooks.value = await listAssets('book')
+    const [books, usage] = await Promise.all([listAssets('book'), getStorage()])
+    cloudBooks.value = books
+    storage.value = usage
   } catch (err) {
     cloudError.value = (err as Error).message
   } finally {
@@ -227,7 +230,12 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
 
     <div class="section-title cloud-head">
       <h2>云端书库</h2>
-      <span class="muted small">公开 · 谁上传的都能看到</span>
+      <span class="muted small">
+        公开 · 谁上传的都能看到
+        <template v-if="storage">
+          · 我的空间已用 {{ formatSize(storage.used) }} / {{ formatSize(storage.quota) }}
+        </template>
+      </span>
     </div>
     <p v-if="cloudError" class="error">{{ cloudError }}</p>
     <p v-if="cloudLoading" class="muted small">正在加载云端书库…</p>
