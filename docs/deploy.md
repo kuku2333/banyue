@@ -48,9 +48,14 @@ server {
 要点：
 
 - `web/dist` 是纯静态文件，**不需要 Node 运行时**；
+- 但纯静态只够「读文章」：书架 / 写作台 / 本地音乐靠浏览器 IndexedDB，能用；
+  **账号、收藏夹、书签、评论、云端文件需要 `server/`**——`node server/src/index.mjs` 会顺带托管 `web/dist`，
+  前端同源调 `/api/*`，一个域名就够。只发 dist 时，前端会提示「这个部署没有后端接口」；
 - SPA 回退必须配（`try_files` / `try_files {path} /index.html`），否则刷新 `/post/xxx` 会 404；
+  交给 Node 托管时不用再叠 nginx 的 fallback，服务端已经处理（缺失的 `.js/.css` 会正确 404 而不是回退成 HTML）；
 - `vite build` 已经把 `_redirects`、`404.html` 一起生成，托管方支持哪个用哪个；
-- 本地验证等价于线上：`pnpm build && pnpm preview` 起的就是最终产物；
+- 本地验证等价于线上：`pnpm build && pnpm preview` 起的就是最终产物（没有 `/api`，云端功能会报错）；
+- 媒体文件（书、音乐）默认不上传服务器，只存在读者浏览器里；「传到云端」才会进 `server/data/files`。
 - 媒体文件（书、音乐）不上传服务器，只存在读者浏览器里，服务器只发静态文件。
 
 ## 1. 为什么必须有一个账号（备选方案的前提）

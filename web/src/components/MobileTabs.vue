@@ -3,7 +3,13 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
-const active = computed(() => String(route.name ?? 'home'))
+/** 文章 / 标签页归到「首页」，阅读器归到「书架」，与顶部导航保持一致 */
+const active = computed(() => {
+  const name = String(route.name ?? 'home')
+  if (['home', 'post', 'tag'].includes(name)) return 'home'
+  if (['shelf', 'read'].includes(name)) return 'shelf'
+  return name
+})
 
 const tabs = [
   {

@@ -79,6 +79,16 @@ describe('splitChapters', () => {
     const chapters = splitChapters(text)
     expect(chapters).toHaveLength(2)
   })
+
+  it('没有空行的整段文本也会切成正常大小', () => {
+    // 有些 txt 整本没有空行，早先会退化成一章几十万字
+    const text = '这是一句话。'.repeat(4000)
+    const chapters = splitChapters(text, 1000)
+    expect(chapters.length).toBeGreaterThan(10)
+    for (const chapter of chapters) {
+      expect(chapter.content.length).toBeLessThanOrEqual(1002)
+    }
+  })
 })
 
 describe('工具函数', () => {

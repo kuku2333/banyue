@@ -29,8 +29,15 @@ async function toggleHidden(): Promise<void> {
   await moderation.hide(slug.value)
   await router.push('/')
 }
-const nav = computed(() => neighbours(slug.value))
-const related = computed(() => relatedPosts(slug.value))
+/** 上下篇与相关阅读也要跳过被隐藏的文章，否则「删掉」的稿子还能从侧门点进来 */
+const nav = computed(() => {
+  const raw = neighbours(slug.value)
+  return {
+    prev: raw.prev && !moderation.isHidden(raw.prev.slug) ? raw.prev : undefined,
+    next: raw.next && !moderation.isHidden(raw.next.slug) ? raw.next : undefined,
+  }
+})
+const related = computed(() => moderation.visible(relatedPosts(slug.value)))
 const activeHeading = ref('')
 const proseEl = ref<HTMLElement | null>(null)
 const restored = ref(false)
@@ -118,6 +125,15 @@ watch(post, async () => {
   activeHeading.value = post.value?.headings[0]?.id ?? ''
   await decorateCodeBlocks()
 })
+
+// 路由表里没有每篇文章的标题，这里补上（分享 / 标签页显示更清楚）
+watch(
+  () => post.value?.title,
+  (title) => {
+    document.title = title ? `${title} · 半页` : '半页'
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

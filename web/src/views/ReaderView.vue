@@ -156,8 +156,11 @@ async function measurePages(reset = false): Promise<void> {
 }
 
 async function loadBook(): Promise<void> {
+  const id = bookId.value
   loading.value = true
-  const result = await getBook(bookId.value)
+  const result = await getBook(id)
+  // 读取是异步的，期间可能又切了书
+  if (id !== bookId.value) return
   if (!result) {
     notFound.value = true
     loading.value = false
@@ -408,6 +411,11 @@ watch([() => settings.fontSize, () => settings.columnWidth, () => settings.lineH
   if (settings.mode === 'paged') measurePages()
 })
 
+// 在阅读器里直接跳到另一本书时组件会被复用，必须自己重新加载
+watch(bookId, () => {
+  void loadBook()
+})
+
 onMounted(() => {
   void loadBook()
   window.addEventListener('keydown', onKeydown)
@@ -417,7 +425,10 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('resize', onResize)
+  detachDrag()
   if (saveTimer) clearTimeout(saveTimer)
+  // 翻页动画的定时器会在组件卸载后继续跑，顺手清掉
+  if (flipTimer) clearTimeout(flipTimer)
   if (book.value) {
     const offset =
       settings.mode === 'paged' ? pageIndex.value / Math.max(pageCount.value, 1) : scrollRatio.value

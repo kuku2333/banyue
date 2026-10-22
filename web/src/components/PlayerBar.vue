@@ -77,6 +77,9 @@ function onOrbClick(): void {
 }
 
 function onWheel(event: WheelEvent): void {
+  // 队列面板本身要能滚，别把滚轮全吃掉
+  if ((event.target as HTMLElement | null)?.closest('.queue-panel')) return
+  event.preventDefault()
   const step = event.deltaY < 0 ? 0.05 : -0.05
   player.setVolume(player.volume + step)
 }
@@ -202,6 +205,8 @@ function onGlobalKeydown(event: KeyboardEvent): void {
     return
   }
   if (player.collapsed) return
+  // 阅读器打开时 ← → 是翻页，别顺手把歌也切了
+  if (document.querySelector('.reader')) return
   if (event.key === 'ArrowRight') {
     event.preventDefault()
     void player.shift(1)
@@ -230,7 +235,7 @@ onBeforeUnmount(() => {
       class="player"
       :class="{ dragging }"
       :style="playerStyle"
-      @wheel.prevent="onWheel"
+      @wheel="onWheel"
     >
       <div v-if="queueOpen" class="queue-panel">
         <header>

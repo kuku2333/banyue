@@ -79,18 +79,22 @@ async function createAndAdd(): Promise<void> {
   if (!newName.value.trim() || busy.value) return
   busy.value = true
   error.value = ''
+  let id = ''
   try {
     const data = await api<{ id: string }>('/api/collections', {
       method: 'POST',
       body: { type: props.type, name: newName.value.trim(), description: '' },
     })
+    id = data.id
     newName.value = ''
     creating.value = false
-    await addTo(data.id)
   } catch (err) {
     error.value = (err as Error).message
+  } finally {
+    // 这里必须先放锁：addTo 自己会再取一次，否则「创建并加入」只建不加
     busy.value = false
   }
+  if (id) await addTo(id)
 }
 </script>
 

@@ -153,31 +153,35 @@ async function importLocal(files: FileList | File[] | null): Promise<void> {
   importing.value = true
   let added = 0
   let skipped = 0
-  for (const file of list) {
-    try {
-      const buffer = await file.arrayBuffer()
-      const hash = await fingerprint(buffer, `${file.name}-${file.size}`)
-      const exists = await findTrackByHash(hash)
-      if (exists) {
+  try {
+    for (const file of list) {
+      try {
+        const buffer = await file.arrayBuffer()
+        const hash = await fingerprint(buffer, `${file.name}-${file.size}`)
+        const exists = await findTrackByHash(hash)
+        if (exists) {
+          skipped++
+          continue
+        }
+        await addTrack({
+          id: hash,
+          title: file.name.replace(/\.[^.]+$/, ''),
+          artist: '',
+          size: file.size,
+          hash,
+          createdAt: Date.now(),
+          data: file,
+        })
+        added++
+      } catch {
         skipped++
-        continue
       }
-      await addTrack({
-        id: hash,
-        title: file.name.replace(/\.[^.]+$/, ''),
-        artist: '',
-        size: file.size,
-        hash,
-        createdAt: Date.now(),
-        data: file,
-      })
-      added++
-    } catch {
-      skipped++
     }
+    await refreshLocal()
+  } finally {
+    // 中途抛错也要把按钮解锁，否则会一直显示「导入中…」
+    importing.value = false
   }
-  await refreshLocal()
-  importing.value = false
   message.value = `新增 ${added} 首${skipped ? ` · 跳过 ${skipped} 首（重复或失败）` : ''}`
   setTimeout(() => (message.value = ''), 4000)
 }

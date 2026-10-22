@@ -106,6 +106,8 @@ watch(
 
 async function add(): Promise<void> {
   const text = note.value.trim()
+  error.value = ''
+  message.value = ''
   if (auth.loggedIn) {
     try {
       await api(`/api/books/${encodeURIComponent(props.bookKey)}/bookmarks`, {

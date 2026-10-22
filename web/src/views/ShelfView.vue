@@ -6,7 +6,7 @@ import CollectionPicker from '@/components/CollectionPicker.vue'
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import { cleanBookText, decodeText, splitChapters } from '@/lib/books'
 import { getBook, putBook } from '@/lib/db'
-import { formatDate } from '@/lib/format'
+import { formatDate, localDateStamp } from '@/lib/format'
 import { formatCount } from '@/lib/format'
 
 const shelf = useShelfStore()
@@ -78,6 +78,10 @@ async function onCloudPick(event: Event): Promise<void> {
 
 /** 把本机的一本书上传到云端（用章节内容重新拼出文本） */
 async function uploadBook(book: { id: string; title: string; author: string }): Promise<void> {
+  if (!auth.loggedIn) {
+    auth.openDialog()
+    return
+  }
   cloudBusy.value = book.id
   cloudError.value = ''
   try {
@@ -249,7 +253,7 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
             </div>
             <p class="muted small">
               {{ (book.progress ?? 0) > 0 ? `已读 ${Math.round((book.progress ?? 0) * 100)}%` : '还没开始' }}
-              · 导入于 {{ formatDate(new Date(book.createdAt).toISOString().slice(0, 10)) }}
+              · 导入于 {{ formatDate(localDateStamp(book.createdAt)) }}
             </p>
           </div>
         </RouterLink>

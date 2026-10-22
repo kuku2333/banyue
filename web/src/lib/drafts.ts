@@ -1,6 +1,7 @@
 import type { DraftRecord } from './db'
 import { countWords } from './books'
 import { estimateReadMinutes } from './markdown'
+import { localDateStamp } from './format'
 
 /** 标题转 slug：保留字母数字，中文标题退化成日期 + 短哈希 */
 export function slugify(title: string, fallbackSeed = Date.now()): string {
@@ -11,8 +12,7 @@ export function slugify(title: string, fallbackSeed = Date.now()): string {
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
   if (latin.length >= 2) return latin.slice(0, 60)
-  const date = new Date(fallbackSeed).toISOString().slice(0, 10)
-  return `post-${date}-${Math.abs(hashCode(title || String(fallbackSeed))).toString(36).slice(0, 4)}`
+  return `post-${localDateStamp(fallbackSeed)}-${Math.abs(hashCode(title || String(fallbackSeed))).toString(36).slice(0, 4)}`
 }
 
 function hashCode(input: string): number {
@@ -51,7 +51,7 @@ export function toPostMarkdown(draft: DraftRecord): string {
     '---',
     `title: ${JSON.stringify(draft.title.trim() || '未命名')}`,
     `excerpt: ${JSON.stringify(excerpt)}`,
-    `date: ${new Date(draft.createdAt).toISOString().slice(0, 10)}`,
+    `date: ${localDateStamp(draft.createdAt)}`,
     `read: ${estimateReadMinutes(words)}`,
     `tags: [${tags.map((tag) => JSON.stringify(tag)).join(', ')}]`,
     'featured: false',

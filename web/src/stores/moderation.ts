@@ -30,7 +30,7 @@ export const useModerationStore = defineStore('moderation', () => {
 
   async function hide(slug: string): Promise<void> {
     await api(`/api/posts/${encodeURIComponent(slug)}/hide`, { method: 'POST' })
-    hidden.value = [...hidden.value, slug]
+    hidden.value = hidden.value.includes(slug) ? hidden.value : [...hidden.value, slug]
   }
 
   async function unhide(slug: string): Promise<void> {

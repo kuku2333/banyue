@@ -1,13 +1,27 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import PostCard from '@/components/PostCard.vue'
-import { postsByTag, tagStats } from '@/lib/content'
+import { posts, postsByTag, tagStats } from '@/lib/content'
+import { useModerationStore } from '@/stores/moderation'
 
 const route = useRoute()
+const moderation = useModerationStore()
 const tag = computed(() => decodeURIComponent(String(route.params.tag ?? '')))
-const list = computed(() => postsByTag(tag.value))
-const others = computed(() => tagStats().filter((item) => item.name !== tag.value).slice(0, 10))
+const list = computed(() => moderation.visible(postsByTag(tag.value)))
+const others = computed(() =>
+  tagStats(moderation.visible(posts))
+    .filter((item) => item.name !== tag.value)
+    .slice(0, 10),
+)
+
+watch(
+  tag,
+  (value) => {
+    document.title = value ? `${value} · 半页` : '标签 · 半页'
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

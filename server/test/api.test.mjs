@@ -138,6 +138,13 @@ test('书签公开可见，带用户名与留言', async () => {
 
   const anonymous = await call('/api/books/book-1/bookmarks', { method: 'POST', body: { chapter: 1 } })
   assert.equal(anonymous.status, 401)
+
+  const badRatio = await call('/api/books/book-1/bookmarks', {
+    method: 'POST',
+    body: { chapter: 1, ratio: 3 },
+    cookie: login.cookie,
+  })
+  assert.equal(badRatio.status, 400)
 })
 
 test('歌曲评论：云端公开，空评论被拒', async () => {
@@ -272,6 +279,92 @@ test('云端文件：登录上传、公开列表、原样下载、只有作者�
   assert.equal(removed.status, 200)
   const gone = await fetch(`${BASE}/api/assets/${id}/file`)
   assert.equal(gone.status, 404)
+})
+
+test('静态资源：畸形百分号转义不会打挂进程', async () => {
+  for (const path of ['/%', '/%zz', '/%E4%ZZ']) {
+    const response = await fetch(BASE + path)
+    await response.text()
+  }
+  // 进程还活着就说明异常被兜住了
+  const fallback = await fetch(BASE + '/api/me')
+  assert.equal(fallback.status, 200)
+})
+
+test('云端文件：上传的 HTML 不会被当页面执行', async () => {
+  const login = await call('/api/auth/login', { method: 'POST', body: alice })
+  const uploaded = await fetch(`${BASE}/api/assets?kind=track`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'text/html',
+      'x-title': encodeURIComponent('看起来是首歌'),
+      'x-filename': 'evil.html',
+      cookie: login.cookie,
+    },
+    body: '<script>alert(document.cookie)</script>',
+  })
+  assert.equal(uploaded.status, 201)
+  const { id } = await uploaded.json()
+
+  const file = await fetch(`${BASE}/api/assets/${id}/file`)
+  const type = file.headers.get('content-type') ?? ''
+  assert.ok(!type.includes('text/html'), `不该用 text/html 下发，实际是 ${type}`)
+  assert.equal(file.headers.get('x-content-type-options'), 'nosniff')
+  assert.match(file.headers.get('content-disposition') ?? '', /^attachment/)
+  await file.text()
+
+  await call(`/api/assets/${id}`, { method: 'DELETE', cookie: login.cookie })
+})
+
+test('云端文件：Range 支持后缀区间，越界返回 416', async () => {
+  const login = await call('/api/auth/login', { method: 'POST', body: alice })
+  const text = '0123456789'
+  const uploaded = await fetch(`${BASE}/api/assets?kind=book`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', 'x-title': 'range-test', cookie: login.cookie },
+    body: text,
+  })
+  assert.equal(uploaded.status, 201)
+  const { id } = await uploaded.json()
+
+  const suffix = await fetch(`${BASE}/api/assets/${id}/file`, { headers: { range: 'bytes=-4' } })
+  assert.equal(suffix.status, 206)
+  assert.equal(suffix.headers.get('content-range'), 'bytes 6-9/10')
+  assert.equal(await suffix.text(), '6789')
+
+  const open = await fetch(`${BASE}/api/assets/${id}/file`, { headers: { range: 'bytes=4-' } })
+  assert.equal(open.status, 206)
+  assert.equal(open.headers.get('content-range'), 'bytes 4-9/10')
+  assert.equal(await open.text(), '456789')
+
+  const beyond = await fetch(`${BASE}/api/assets/${id}/file`, { headers: { range: 'bytes=99-' } })
+  assert.equal(beyond.status, 416)
+  assert.equal(beyond.headers.get('content-range'), 'bytes */10')
+  await beyond.text()
+
+  await call(`/api/assets/${id}`, { method: 'DELETE', cookie: login.cookie })
+})
+
+test('登录限流：同一用户名连续输错十次后先停一会儿', async () => {
+  await call('/api/auth/register', {
+    method: 'POST',
+    body: { username: 'throttle-user', password: 'secret123', displayName: '限流' },
+  })
+
+  for (let i = 0; i < 10; i++) {
+    const attempt = await call('/api/auth/login', {
+      method: 'POST',
+      body: { username: 'throttle-user', password: 'wrong-password' },
+    })
+    assert.equal(attempt.status, 401)
+  }
+
+  const blocked = await call('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'throttle-user', password: 'secret123' },
+  })
+  assert.equal(blocked.status, 429)
+  assert.match(blocked.body.error, /输错太多次/)
 })
 
 test('管理员：能删别人的文件、能隐藏文章', async () => {

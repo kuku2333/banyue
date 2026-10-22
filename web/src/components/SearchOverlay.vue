@@ -3,19 +3,23 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { posts } from '@/lib/content'
 import { formatDate } from '@/lib/format'
+import { useModerationStore } from '@/stores/moderation'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const router = useRouter()
+const moderation = useModerationStore()
 const keyword = ref('')
 const activeIndex = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 
 const results = computed(() => {
+  // 被管理员隐藏的文章不该从搜索里漏出来
+  const source = moderation.visible(posts)
   const q = keyword.value.trim().toLowerCase()
-  if (!q) return posts.slice(0, 5)
-  return posts
+  if (!q) return source.slice(0, 5)
+  return source
     .filter((post) => {
       const haystack = `${post.title} ${post.excerpt} ${post.tags.join(' ')} ${post.html}`
       return haystack.toLowerCase().includes(q)

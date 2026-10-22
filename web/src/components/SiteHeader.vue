@@ -1,11 +1,21 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { onClickOutside } from '@vueuse/core'
 import { useAuthStore } from '@/stores/auth'
 
 const emit = defineEmits<{ 'open-search': [] }>()
 const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
+
+const menuOpen = ref(false)
+const menuError = ref('')
+const accountRef = ref<HTMLElement | null>(null)
+
+onClickOutside(accountRef, () => {
+  menuOpen.value = false
+})
 
 interface NavLink {
   to: string
@@ -23,6 +33,33 @@ const links: NavLink[] = [
 
 const activeName = computed(() => String(route.name ?? 'home'))
 const isActive = (link: NavLink): boolean => link.names.includes(activeName.value)
+
+function toggleMenu(): void {
+  menuError.value = ''
+  menuOpen.value = !menuOpen.value
+}
+
+async function signOut(): Promise<void> {
+  menuOpen.value = false
+  await auth.logout()
+}
+
+/** 重新生成恢复码后复用「只剩这一次」的弹窗展示 */
+async function regenerate(): Promise<void> {
+  menuError.value = ''
+  try {
+    await auth.regenerateRecoveryCode()
+    menuOpen.value = false
+    auth.openDialog()
+  } catch (error) {
+    menuError.value = (error as Error).message
+  }
+}
+
+function goCollections(): void {
+  menuOpen.value = false
+  void router.push('/collections')
+}
 </script>
 
 <template>
@@ -60,17 +97,42 @@ const isActive = (link: NavLink): boolean => link.names.includes(activeName.valu
         </svg>
       </button>
 
-      <RouterLink v-if="auth.loggedIn" class="user-chip" to="/collections" :title="`@${auth.user?.username}`">
-        <span class="avatar">{{ auth.user?.displayName?.slice(0, 1) ?? '·' }}</span>
-        <b>{{ auth.user?.displayName ?? auth.user?.username }}</b>
-        <span v-if="auth.user?.isAdmin" class="admin-badge">管理员</span>
-      </RouterLink>
-      <button v-else class="login-btn" type="button" @click="auth.openDialog()">登录</button>
+      <div ref="accountRef" class="account">
+        <button
+          v-if="auth.loggedIn"
+          type="button"
+          class="user-chip"
+          :aria-expanded="menuOpen"
+          aria-haspopup="menu"
+          :title="`@${auth.user?.username}`"
+          @click="toggleMenu"
+        >
+          <span class="avatar">{{ auth.user?.displayName?.slice(0, 1) ?? '·' }}</span>
+          <b>{{ auth.user?.displayName ?? auth.user?.username }}</b>
+          <span v-if="auth.user?.isAdmin" class="admin-badge">管理员</span>
+        </button>
+        <button v-else class="login-btn" type="button" @click="auth.openDialog()">登录</button>
+
+        <div v-if="menuOpen && auth.loggedIn" class="account-menu" role="menu">
+          <p class="menu-head">
+            <b>{{ auth.user?.displayName }}</b>
+            <span>@{{ auth.user?.username }}</span>
+          </p>
+          <button type="button" role="menuitem" @click="goCollections">我的收藏夹</button>
+          <button type="button" role="menuitem" @click="regenerate">重新生成恢复码</button>
+          <button type="button" role="menuitem" class="danger" @click="signOut">退出登录</button>
+          <p v-if="menuError" class="menu-error">{{ menuError }}</p>
+        </div>
+      </div>
     </div>
   </header>
 </template>
 
 <style scoped>
+.account {
+  position: relative;
+}
+
 .user-chip {
   display: flex;
   align-items: center;
@@ -128,6 +190,66 @@ const isActive = (link: NavLink): boolean => link.names.includes(activeName.valu
 .login-btn:hover {
   color: var(--accent);
   border-color: var(--accent-line);
+}
+
+.account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 95;
+  min-width: 176px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.account-menu button {
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text-2);
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.account-menu button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.account-menu button.danger:hover {
+  color: var(--danger);
+  background: rgba(251, 113, 133, 0.08);
+}
+
+.menu-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 0 4px;
+  padding: 6px 10px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.menu-head b {
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.menu-head span {
+  color: var(--dim);
+  font-size: 0.72rem;
+}
+
+.menu-error {
+  margin: 4px 0 0;
+  padding: 0 10px 6px;
+  color: var(--danger);
+  font-size: 0.72rem;
 }
 
 @media (max-width: 767px) {

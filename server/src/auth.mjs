@@ -12,6 +12,11 @@ const ENV_ADMINS = new Set(
     .filter(Boolean),
 )
 
+/** 环境变量里配置的管理员用户名（注册时立刻生效，不必等重启写库） */
+export function isEnvAdmin(username) {
+  return ENV_ADMINS.has(String(username ?? '').toLowerCase())
+}
+
 export function hashPassword(password, salt = randomBytes(16).toString('hex')) {
   const hash = scryptSync(password, salt, 64).toString('hex')
   return { hash, salt }
@@ -48,7 +53,7 @@ export function userFromRequest(req) {
   if (!user) return null
   return {
     ...user,
-    is_admin: Number(user.is_admin) === 1 || ENV_ADMINS.has(String(user.username).toLowerCase()),
+    is_admin: Number(user.is_admin) === 1 || isEnvAdmin(user.username),
     sessionId: sid,
   }
 }

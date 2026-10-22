@@ -66,11 +66,13 @@ async function load(): Promise<void> {
 }
 
 watch(
-  () => props.open,
-  async (open) => {
+  // 面板开着的时候再切歌也要跟着刷新，否则会看到上一首的评论
+  () => [props.open, props.track?.id] as const,
+  async ([open]) => {
     if (!open) return
     draft.value = ''
     message.value = ''
+    error.value = ''
     local.value = []
     cloud.value = []
     await auth.ensure()
@@ -81,6 +83,8 @@ watch(
 async function submit(): Promise<void> {
   const text = draft.value.trim()
   if (!text || !props.track) return
+  error.value = ''
+  message.value = ''
   if (isCloud.value) {
     if (!auth.loggedIn) {
       auth.openDialog()

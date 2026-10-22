@@ -86,6 +86,31 @@ export function splitChapters(text: string, fallbackSize = 3000): Chapter[] {
   return chapters.filter((chapter) => chapter.content.length > 0)
 }
 
+/**
+ * 单个段落超长时（比如整本书只有换行、没有空行的 txt）再按句末切一刀，
+ * 否则「按字数切节」会退化成一个章节几十万字，阅读器分页会直接卡死。
+ */
+function splitLongBlock(block: string, size: number): string[] {
+  if (block.length <= size) return [block]
+  const pieces: string[] = []
+  let rest = block
+  while (rest.length > size) {
+    const window = rest.slice(0, size)
+    const cut = Math.max(
+      window.lastIndexOf('。'),
+      window.lastIndexOf('！'),
+      window.lastIndexOf('？'),
+      window.lastIndexOf('\n'),
+    )
+    // 句末太靠前就硬切，避免切出很短的碎块
+    const at = cut >= size * 0.5 ? cut + 1 : size
+    pieces.push(rest.slice(0, at))
+    rest = rest.slice(at)
+  }
+  if (rest) pieces.push(rest)
+  return pieces
+}
+
 function chunkByLength(text: string, size: number): Chapter[] {
   const paragraphs = text.split(/\n{2,}/).filter((p) => p.trim())
   const chapters: Chapter[] = []
@@ -100,9 +125,13 @@ function chunkByLength(text: string, size: number): Chapter[] {
   }
 
   for (const paragraph of paragraphs) {
-    buffer.push(paragraph)
-    length += paragraph.length
-    if (length >= size) flush()
+    for (const piece of splitLongBlock(paragraph, size)) {
+      // 先判断「加进去会不会超」，否则一节会攒到两倍大小
+      if (buffer.length && length + piece.length > size) flush()
+      buffer.push(piece)
+      length += piece.length
+      if (length >= size) flush()
+    }
   }
   flush()
   return chapters

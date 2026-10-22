@@ -10,6 +10,8 @@ export interface Track {
   source: TrackSource
   duration?: number
   hash?: string
+  /** 这条 track 是从哪个地区的榜单来的：查试听地址时要去同一个 store 才找得到 */
+  region?: Region['id']
   /** 本地文件不在 Track 里直接放 Blob，播放时按 id 从 IndexedDB 取 */
   local?: boolean
 }
@@ -45,7 +47,8 @@ export async function fetchTopSongs(region: Region['id'], limit = 10): Promise<T
     id: `apple-${entry.id?.attributes?.['im:id'] ?? index}`,
     title: entry['im:name']?.label ?? '未知曲目',
     artist: entry['im:artist']?.label ?? '',
-    art: entry['im:image']?.at(-1)?.label,
+    art: Array.isArray(entry['im:image']) ? entry['im:image'].at(-1)?.label : undefined,
+    region,
     source: 'itunes' as const,
   }))
 }
@@ -92,9 +95,13 @@ function toTrack(item: RawSearchItem): Track | null {
 /** 榜单里的曲目没有试听地址，播放前按「歌手 + 曲名」查一次 */
 export async function resolvePreview(track: Track, region: Region['id'] = 'hk'): Promise<string | null> {
   if (track.previewUrl) return track.previewUrl
-  const list = await searchSongs(`${track.artist} ${track.title}`.trim(), region, 5)
-  const match =
-    list.find((item) => item.title.includes(track.title) || track.title.includes(item.title)) ?? list[0]
+  // 榜单曲目记着自己来自哪个 store，去同一个地区搜才搜得到
+  const list = await searchSongs(`${track.artist} ${track.title}`.trim(), track.region ?? region, 5)
+  const sameArtist = (item: Track): boolean =>
+    Boolean(track.artist) && (item.artist.includes(track.artist) || track.artist.includes(item.artist))
+  const byTitle = list.find((item) => item.title.includes(track.title) || track.title.includes(item.title))
+  // 只有「同一位歌手」的候选才允许兜底：否则会播成一首完全不相干的歌
+  const match = byTitle ?? list.find(sameArtist)
   if (!match?.previewUrl) return null
   track.previewUrl = match.previewUrl
   track.art = track.art ?? match.art

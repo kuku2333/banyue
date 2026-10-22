@@ -27,6 +27,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   let audio: HTMLAudioElement | null = null
   let objectUrl: string | null = null
+  let loadToken = 0
   let audioContext: AudioContext | null = null
   const analyser = shallowRef<AnalyserNode | null>(null)
   const blobCache = new Map<string, string>()
@@ -84,20 +85,18 @@ export const usePlayerStore = defineStore('player', () => {
     return element
   }
 
-  async function resolveSource(track: Track): Promise<string | null> {
+  async function resolveSource(track: Track): Promise<{ url: string; local: boolean } | null> {
     if (track.local) {
       // 动态引入：Dexie 只在真的播放本地文件时才加载，避免进主包
       const { getTrackBlob } = await import('@/lib/db')
       const blob = await getTrackBlob(track.id)
       if (!blob) return null
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-      objectUrl = URL.createObjectURL(blob)
-      return objectUrl
+      return { url: URL.createObjectURL(blob), local: true }
     }
     const url = await resolvePreview(track)
     if (!url) return null
     const cached = blobCache.get(url)
-    if (cached) return cached
+    if (cached) return { url: cached, local: false }
     // 转成 blob 再播：既绕开跨域限制，也让 Web Audio 能拿到频谱做律动
     try {
       const response = await fetch(url)
@@ -105,32 +104,42 @@ export const usePlayerStore = defineStore('player', () => {
       const blob = await response.blob()
       const object = URL.createObjectURL(blob)
       blobCache.set(url, object)
-      return object
+      return { url: object, local: false }
     } catch {
-      return url
+      return { url, local: false }
     }
   }
 
   async function load(target: Track, autoplay = true): Promise<void> {
+    // 快速连点切歌时，先发起的那次请求可能后返回；用令牌丢掉过期的结果
+    const token = ++loadToken
     loading.value = true
     error.value = ''
     try {
-      const src = await resolveSource(target)
-      if (!src) {
+      const resolved = await resolveSource(target)
+      if (token !== loadToken) {
+        if (resolved?.local) URL.revokeObjectURL(resolved.url)
+        return
+      }
+      if (!resolved) {
         error.value = '没有找到可播放的音源'
         return
       }
       const element = ensureAudio()
       ensureAnalyser(element)
-      element.src = src
+      if (objectUrl && objectUrl !== resolved.url) URL.revokeObjectURL(objectUrl)
+      objectUrl = resolved.local ? resolved.url : null
+      element.src = resolved.url
       currentTime.value = 0
       duration.value = 0
       if (autoplay) await element.play()
     } catch {
-      error.value = '播放失败，可能是网络或格式问题'
-      playing.value = false
+      if (token === loadToken) {
+        error.value = '播放失败，可能是网络或格式问题'
+        playing.value = false
+      }
     } finally {
-      loading.value = false
+      if (token === loadToken) loading.value = false
     }
   }
 
@@ -266,9 +275,17 @@ export const usePlayerStore = defineStore('player', () => {
 
   function close(): void {
     const element = ensureAudio()
+    loadToken++
     element.pause()
     element.removeAttribute('src')
     element.load()
+    // 缓存里全是 blob: URL，不主动释放会一直占着内存
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl)
+      objectUrl = null
+    }
+    for (const url of blobCache.values()) URL.revokeObjectURL(url)
+    blobCache.clear()
     queue.value = []
     index.value = -1
     currentTime.value = 0

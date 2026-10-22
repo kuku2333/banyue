@@ -82,7 +82,16 @@ node scripts/grant-admin.mjs <username> --revoke  # 取消
 - 密码用 `scrypt`（N=16384）加盐存储，不存明文；
 - 会话是随机 24 字节令牌，Cookie 为 `HttpOnly; SameSite=Lax`，不暴露给前端 JS；
 - 写操作全部校验登录态与归属（别人的收藏夹返回 403）；
-- 请求体上限 64KB（JSON），上传另按类型限 50MB / 40MB，缺 `Content-Length` 时边写边计数；
+- 请求体上限 64KB（JSON），上传另按类型限 50MB / 40MB，缺 `Content-Length` 时边写边计数，
+  落盘后再按实际用量复核一次配额（并发上传不会一起冲过 200MB）；
+- 上传的 MIME 会被归一：书只存 `text/plain` / `text/markdown`，音乐只存 `audio/*`，
+  其余按 `application/octet-stream` 处理；下载时带 `X-Content-Type-Options: nosniff`，
+  非音频文件强制 `Content-Disposition: attachment`——否则别人可以上传 HTML/SVG 在本站域名下执行脚本；
+- `Range` 支持 `bytes=a-b` / `bytes=a-` / `bytes=-n`，越界返回 `416`；
+- 路径先做安全解码：`/%`、`/%zz` 这类畸形转义返回 400，不会把进程带下去；
+  静态资源按白名单后缀解析，缺失的 `.js` / `.css` 返回 404，不会被回退成 `index.html`；
+- 登录与恢复码重置换密码按「用户名 + 来源 IP」限流：10 分钟内错 10 次返回 `429`，
+  成功登录（或成功重置）后清零；
 - 同一个用户的自建部署里没有第三方登录、没有邮箱；
 - **恢复码**在注册时显示一次（形如 `ABCD-EFGH-JKLM-NPQR`），只存 scrypt 哈希；
   忘记密码时用「用户名 + 恢复码 + 新密码」重置，成功后恢复码轮换、所有旧会话作废。
@@ -94,4 +103,5 @@ node scripts/grant-admin.mjs <username> --revoke  # 取消
 cd server && node --test test/api.test.mjs
 ```
 
-测试会拉起一个临时数据库和随机端口的服务，覆盖注册登录、收藏夹权限、书签、评论。
+测试会拉起一个临时数据库和随机端口的服务，覆盖注册登录、收藏夹权限、书签、评论、
+云端配额与 Range 下载、上传 MIME 白名单，以及畸形 URL 不会打挂进程。

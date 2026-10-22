@@ -30,3 +30,7 @@ pnpm-debug.log*
 
 # 服务端本地数据库
 server/data/
+
+# 其它工具的工作目录（WorkBuddy / CodeBuddy）
+.workbuddy/
+.codebuddy/

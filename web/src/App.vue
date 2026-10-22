@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import SiteHeader from '@/components/SiteHeader.vue'
 import SiteFooter from '@/components/SiteFooter.vue'
@@ -44,6 +44,16 @@ onUnmounted(() => {
 })
 
 const isPost = computed(() => route.name === 'post')
+
+// 换页后如果已经在顶部，浏览器不会派发 scroll 事件，进度条会停在上一条文章的位置
+watch(
+  () => route.fullPath,
+  async () => {
+    progress.value = 0
+    await nextTick()
+    onScroll()
+  },
+)
 </script>
 
 <template>

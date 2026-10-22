@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { renderMarkdown } from '@/lib/markdown'
 import { useWriteStore } from '@/stores/write'
-import { formatDate } from '@/lib/format'
+import { formatDate, localDateStamp } from '@/lib/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -145,7 +145,7 @@ onBeforeUnmount(() => {
             @click="openDraft(draft.id)"
           >
             <b>{{ draft.title.trim() || '未命名草稿' }}</b>
-            <span>{{ formatDate(new Date(draft.updatedAt).toISOString().slice(0, 10), 'short') }} · {{ draft.content.replace(/\s+/g, '').length }} 字</span>
+            <span>{{ formatDate(localDateStamp(draft.updatedAt), 'short') }} · {{ draft.content.replace(/\s+/g, '').length }} 字</span>
           </button>
         </li>
       </ul>

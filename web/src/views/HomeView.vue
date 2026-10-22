@@ -68,7 +68,7 @@ const filtered = computed(() =>
 
     <div class="section-title">
       <h2>全部文章</h2>
-      <RouterLink to="/archive">{{ posts.length }} 篇 · 看归档 →</RouterLink>
+      <RouterLink to="/archive">{{ visiblePosts.length }} 篇 · 看归档 →</RouterLink>
     </div>
 
     <div class="chips" role="tablist" aria-label="按标签筛选">
