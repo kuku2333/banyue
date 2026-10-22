@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useShelfStore } from '@/stores/shelf'
+import { useAuthStore } from '@/stores/auth'
 import CollectionPicker from '@/components/CollectionPicker.vue'
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import { cleanBookText, decodeText, splitChapters } from '@/lib/books'
@@ -9,8 +10,10 @@ import { formatDate } from '@/lib/format'
 import { formatCount } from '@/lib/format'
 
 const shelf = useShelfStore()
+const auth = useAuthStore()
 const dragging = ref(false)
 const inputRef = ref<HTMLInputElement | null>(null)
+const cloudInputRef = ref<HTMLInputElement | null>(null)
 const message = ref('')
 const busy = ref(false)
 const pickerOpen = ref(false)
@@ -33,6 +36,43 @@ async function loadCloud(): Promise<void> {
     cloudError.value = (err as Error).message
   } finally {
     cloudLoading.value = false
+  }
+}
+
+/** 直接从磁盘选文件传到云端（不必先导入本地书架） */
+async function onCloudPick(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  input.value = ''
+  if (!files.length) return
+  if (!auth.loggedIn) {
+    auth.openDialog()
+    return
+  }
+  cloudBusy.value = 'new'
+  cloudError.value = ''
+  let added = 0
+  try {
+    for (const file of files) {
+      if (!/\.(txt|md|markdown)$/i.test(file.name)) {
+        cloudError.value = `${file.name} 不是 TXT / Markdown`
+        continue
+      }
+      await uploadAsset('book', file, {
+        title: file.name.replace(/\.[^.]+$/, ''),
+        filename: file.name,
+      })
+      added++
+    }
+    if (added) {
+      message.value = `已上传 ${added} 本书到云端`
+      setTimeout(() => (message.value = ''), 3000)
+      await loadCloud()
+    }
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    cloudBusy.value = ''
   }
 }
 
@@ -236,6 +276,25 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
           · 我的空间已用 {{ formatSize(storage.used) }} / {{ formatSize(storage.quota) }}
         </template>
       </span>
+      <div class="cloud-actions">
+        <input
+          id="cloud-book-input"
+          ref="cloudInputRef"
+          type="file"
+          accept=".txt,.md,.markdown,text/plain"
+          multiple
+          hidden
+          @change="onCloudPick"
+        />
+        <button
+          type="button"
+          class="btn small-btn"
+          :disabled="cloudBusy === 'new'"
+          @click="auth.loggedIn ? cloudInputRef?.click() : auth.openDialog()"
+        >
+          {{ cloudBusy === 'new' ? '上传中…' : '上传书到云端' }}
+        </button>
+      </div>
     </div>
     <p v-if="cloudError" class="error">{{ cloudError }}</p>
     <p v-if="cloudLoading" class="muted small">正在加载云端书库…</p>
@@ -332,7 +391,7 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
 .book-main {
   display: flex;
   gap: 16px;
-  padding: 16px;
+  padding: 16px 16px 44px;
 }
 
 .book-spine {
@@ -433,18 +492,14 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
   padding: 3px 9px;
   border-radius: 7px;
   border: 1px solid var(--line);
-  color: var(--dim);
+  color: var(--muted);
   font-size: 0.72rem;
-  opacity: 0;
+  opacity: 0.85;
   transition: 0.15s ease;
 }
 
-.book-card:hover .book-cloud,
-.book-cloud:focus-visible {
-  opacity: 1;
-}
-
 .book-cloud:hover {
+  opacity: 1;
   color: var(--accent);
   border-color: var(--accent-line);
 }
@@ -452,6 +507,29 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
 .cloud-head {
   margin-top: 40px;
   align-items: baseline;
+  gap: 12px;
+}
+
+.cloud-head h2 {
+  white-space: nowrap;
+}
+
+.cloud-head > span {
+  margin-right: auto;
+}
+
+.cloud-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.small-btn {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+}
+
+.cloud-head .small-btn {
+  margin-left: 10px;
 }
 
 .cloud-list {

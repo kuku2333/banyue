@@ -131,7 +131,16 @@ console.log('cloud owner:', await evaluate("document.querySelector('.cloud-main 
 console.log('storage line:', await evaluate("document.querySelector('.cloud-head .muted')?.textContent?.replace(/\\s+/g, ' ').trim() ?? 'none'"))
 await shot('shelf-cloud')
 
-// 3) 下载回书架
+// 3) 直接从磁盘上传一本书到云端（不用先导入本地）
+const directPath = path.join(OUT, 'sample-cloud-direct.txt')
+await writeFile(directPath, '第一章 直接上传\n\n这本书没有先进本地书架，直接传到云端。\n', 'utf8')
+const doc2 = await send('DOM.getDocument', { depth: -1 })
+const cloudInput = await send('DOM.querySelector', { nodeId: doc2.root.nodeId, selector: '#cloud-book-input' })
+await send('DOM.setFileInputFiles', { nodeId: cloudInput.nodeId, files: [directPath] })
+await wait(2200)
+console.log('cloud books after direct upload:', await evaluate("document.querySelectorAll('.cloud-list li').length"))
+
+// 4) 下载回书架
 const before = await evaluate("document.querySelectorAll('.book-card').length")
 await evaluate("document.querySelector('.cloud-list .cloud-btn')?.click()")
 await wait(2200)
