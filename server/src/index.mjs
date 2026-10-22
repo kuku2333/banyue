@@ -548,7 +548,7 @@ route('GET', '/api/storage', async (req, res) => {
 route('GET', '/api/assets', async (req, res, _params, url) => {
   const kind = url.searchParams.get('kind') === 'track' ? 'track' : 'book'
   const list = rows(
-    `SELECT a.id, a.kind, a.title, a.subtitle, a.size, a.mime, a.created_at, u.username, u.display_name
+    `SELECT a.id, a.kind, a.title, a.subtitle, a.size, a.mime, a.hash, a.created_at, u.username, u.display_name
      FROM assets a JOIN users u ON u.id = a.owner_id
      WHERE a.kind = ? ORDER BY a.created_at DESC LIMIT 300`,
     [kind],
@@ -562,6 +562,7 @@ route('GET', '/api/assets', async (req, res, _params, url) => {
       subtitle: item.subtitle,
       size: item.size,
       mime: item.mime,
+      hash: item.hash ?? '',
       createdAt: item.created_at,
       owner: { username: item.username, displayName: item.display_name },
       mine: user?.username === item.username,
@@ -591,6 +592,13 @@ route('POST', '/api/assets', async (req, res, _params, url) => {
   const title = safeDecode(String(req.headers['x-title'] ?? ''))?.trim().slice(0, 120) ?? ''
   const subtitle = safeDecode(String(req.headers['x-subtitle'] ?? ''))?.trim().slice(0, 120) ?? ''
   if (!title) return fail(res, 400, '缺少标题')
+
+  const hash = (safeDecode(String(req.headers['x-hash'] ?? '')) ?? '').trim().slice(0, 64)
+  // 同一用户上传过同一内容指纹的，直接跳过，不再落盘、不占配额
+  if (hash) {
+    const existed = row('SELECT id FROM assets WHERE owner_id = ? AND kind = ? AND hash = ?', [user.id, kind, hash])
+    if (existed) return send(res, 200, { duplicate: true, id: existed.id })
+  }
 
   const mime = uploadMime(kind, req.headers['content-type'])
   const fallbackExt = safeExt(safeDecode(String(req.headers['x-filename'] ?? '')) ?? '')
@@ -636,8 +644,8 @@ route('POST', '/api/assets', async (req, res, _params, url) => {
   }
 
   run(
-    'INSERT INTO assets (id, owner_id, kind, title, subtitle, size, mime, stored_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, user.id, kind, title, subtitle, written, mime, storedName, Date.now()],
+    'INSERT INTO assets (id, owner_id, kind, title, subtitle, size, mime, stored_name, hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, user.id, kind, title, subtitle, written, mime, storedName, hash, Date.now()],
   )
   send(res, 201, { id, size: written })
 })

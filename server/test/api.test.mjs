@@ -285,10 +285,36 @@ test('静态资源：畸形百分号转义不会打挂进程', async () => {
   for (const path of ['/%', '/%zz', '/%E4%ZZ']) {
     const response = await fetch(BASE + path)
     await response.text()
-  }
-  // 进程还活着就说明异常被兜住了
+  }  // 进程还活着就说明异常被兜住了
   const fallback = await fetch(BASE + '/api/me')
   assert.equal(fallback.status, 200)
+})
+
+test('云端文件：同一用户同一指纹只存一份，重复上传返回 duplicate', async () => {
+  const login = await call('/api/auth/login', { method: 'POST', body: alice })
+  const body = '同一首歌的内容'
+  const headers = {
+    'content-type': 'audio/mpeg',
+    'x-title': encodeURIComponent('同指纹的歌'),
+    'x-hash': encodeURIComponent('a1b2c3d4e5f6a7b8'),
+    cookie: login.cookie,
+  }
+
+  const first = await fetch(`${BASE}/api/assets?kind=track`, { method: 'POST', headers, body })
+  assert.equal(first.status, 201)
+  const firstId = (await first.json()).id
+
+  const second = await fetch(`${BASE}/api/assets?kind=track`, { method: 'POST', headers, body })
+  assert.equal(second.status, 200)
+  const secondData = await second.json()
+  assert.equal(secondData.duplicate, true)
+  assert.equal(secondData.id, firstId)
+
+  const listed = await call('/api/assets?kind=track')
+  const mine = listed.body.assets.filter((asset) => asset.hash === 'a1b2c3d4e5f6a7b8')
+  assert.equal(mine.length, 1, '同指纹只该有一条')
+
+  await call(`/api/assets/${firstId}`, { method: 'DELETE', cookie: login.cookie })
 })
 
 test('云端文件：上传的 HTML 不会被当页面执行', async () => {

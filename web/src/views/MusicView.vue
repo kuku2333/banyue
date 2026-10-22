@@ -4,7 +4,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { REGIONS, fetchTopSongs, fingerprint, formatTime, isAudioFile, searchSongs, type Region, type Track } from '@/lib/music'
 import { addTrack, deleteTrack, findTrackByHash, getTrackBlob, listTracks, type TrackRecord } from '@/lib/db'
-import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
+import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, syncTracksToCloud, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import { BILI_HOT, BILI_SNAP } from '@/lib/bili'
 import { formatCount } from '@/lib/format'
 
@@ -43,6 +43,8 @@ const cloudLoading = ref(false)
 const cloudBusy = ref('')
 const cloudError = ref('')
 const storage = ref<StorageUsage | null>(null)
+const syncing = ref(false)
+const syncProgress = ref('')
 
 const cloudList = computed<Track[]>(() =>
   cloudTracks.value.map((asset) => ({
@@ -93,6 +95,42 @@ async function removeCloud(asset: CloudAsset): Promise<void> {
   if (!window.confirm(`从云端删除《${asset.title}》？`)) return
   await deleteAsset(asset.id)
   await loadCloud()
+}
+
+/** 一键同步：本地音乐里云端还没有的自动上传，云端已有的跳过 */
+async function syncAllToCloud(): Promise<void> {
+  if (syncing.value) return
+  if (!auth.loggedIn) {
+    auth.openDialog()
+    return
+  }
+  if (!local.value.length) {
+    message.value = '本地还没有音乐，先去「本地音乐」导入几首'
+    setTimeout(() => (message.value = ''), 3000)
+    return
+  }
+  syncing.value = true
+  syncProgress.value = '准备中…'
+  cloudError.value = ''
+  try {
+    const tracks = local.value.map((item) => ({
+      id: item.id,
+      title: item.title,
+      artist: item.artist || '本地文件',
+      hash: item.hash,
+    }))
+    const result = await syncTracksToCloud(tracks, getTrackBlob, (done, total) => {
+      syncProgress.value = `同步中 ${done}/${total}`
+    })
+    message.value = `同步完成：新传 ${result.uploaded} · 跳过 ${result.skipped} · 失败 ${result.failed}`
+    setTimeout(() => (message.value = ''), 5000)
+    await loadCloud()
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    syncing.value = false
+    syncProgress.value = ''
+  }
 }
 
 const localTracks = computed<Track[]>(() =>
@@ -398,7 +436,17 @@ onMounted(() => {
           云端共 {{ cloudTracks.length }} 首 · 所有人可听
           <template v-if="storage"> · 我的空间已用 {{ formatSize(storage.used) }} / {{ formatSize(storage.quota) }}</template>
         </span>
-        <button type="button" class="btn small-btn" @click="loadCloud">刷新</button>
+        <div class="head-actions">
+          <button
+            type="button"
+            class="btn small-btn"
+            :disabled="syncing"
+            @click="syncAllToCloud"
+          >
+            {{ syncing ? (syncProgress || '同步中…') : '一键同步' }}
+          </button>
+          <button type="button" class="btn small-btn" @click="loadCloud">刷新</button>
+        </div>
       </div>
       <p v-if="cloudError" class="notice">{{ cloudError }}</p>
       <p v-if="cloudLoading" class="muted small">加载中…</p>

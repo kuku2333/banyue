@@ -80,6 +80,7 @@ db.exec(`
     size INTEGER NOT NULL,
     mime TEXT NOT NULL,
     stored_name TEXT NOT NULL,
+    hash TEXT NOT NULL DEFAULT '',
     created_at INTEGER NOT NULL
   );
 
@@ -103,6 +104,13 @@ if (!userColumns.has('recovery_salt')) {
 if (!userColumns.has('is_admin')) {
   db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0')
 }
+
+/* 老库补列：云端文件指纹（判重用，旧数据为空） */
+const assetColumns = new Set(db.prepare('PRAGMA table_info(assets)').all().map((column) => column.name))
+if (!assetColumns.has('hash')) {
+  db.exec('ALTER TABLE assets ADD COLUMN hash TEXT NOT NULL DEFAULT \'\'')
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_assets_hash ON assets(owner_id, kind, hash)')
 
 /* 环境变量里列出的用户名自动成为管理员 */
 const admins = (process.env.BANYUE_ADMINS ?? '')

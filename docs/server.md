@@ -50,7 +50,7 @@ BANYUE_DB=/path/db.sqlite node src/index.mjs
 | POST | `/api/songs/:key/comments` | 需登录：`{body}` |
 | DELETE | `/api/songs/:key/comments/:id` | 只有作者 |
 | GET | `/api/assets?kind=book\|track` | 云端文件列表（公开，带上传者） |
-| POST | `/api/assets?kind=book\|track` | 需登录：原始字节 + 头 `x-title` / `x-subtitle` / `x-filename` |
+| POST | `/api/assets?kind=book\|track` | 需登录：原始字节 + 头 `x-title` / `x-subtitle` / `x-filename` / 可选 `x-hash`（内容指纹） |
 | GET | `/api/assets/:id/file` | 下载 / 流式播放，支持 Range |
 | DELETE | `/api/assets/:id` | 只有上传者（管理员可删任意） |
 | POST | `/api/auth/recover` | 恢复码重置密码：`{username, code, password}` |
@@ -62,6 +62,10 @@ BANYUE_DB=/path/db.sqlite node src/index.mjs
 上传体积上限：书 50MB、音乐 40MB；**每个账号默认总共 200MB**（`BANYUE_QUOTA_MB` 可调），
 超出返回 413 并提示剩余空间。文件落在 `server/data/files/`，数据库只存元信息；
 `GET /api/storage` 返回当前账号的 `{ used, quota }`。
+
+**内容指纹去重**：上传时带 `x-hash`（本地音乐导入算好的 SHA-256 前 16 位），
+同一账号重复上传同一指纹会返回 `200 { duplicate: true, id }`，不落盘、不占配额。
+「一键同步」靠它跳过云端已有的文件；无指纹的旧数据不参与判重。
 
 ## 管理员
 
