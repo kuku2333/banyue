@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { row, rows, run } from './db.mjs'
 import {
   clearCookie,
+  contentHash,
   createSession,
   destroySession,
   generateRecoveryCode,
@@ -643,9 +644,19 @@ route('POST', '/api/assets', async (req, res, _params, url) => {
     return fail(res, 413, '文件超过可用空间或大小上限')
   }
 
+  // 客户端没传指纹时，服务端按落盘内容补一份——老数据/漏传 hash 的客户端也不漏判
+  const finalHash = hash || contentHash(target)
+  if (finalHash) {
+    const existed = row('SELECT id FROM assets WHERE owner_id = ? AND kind = ? AND hash = ?', [user.id, kind, finalHash])
+    if (existed) {
+      unlinkSync(target)
+      return send(res, 200, { duplicate: true, id: existed.id })
+    }
+  }
+
   run(
     'INSERT INTO assets (id, owner_id, kind, title, subtitle, size, mime, stored_name, hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, user.id, kind, title, subtitle, written, mime, storedName, hash, Date.now()],
+    [id, user.id, kind, title, subtitle, written, mime, storedName, finalHash, Date.now()],
   )
   send(res, 201, { id, size: written })
 })

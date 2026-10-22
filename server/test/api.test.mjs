@@ -317,6 +317,36 @@ test('云端文件：同一用户同一指纹只存一份，重复上传返回 d
   await call(`/api/assets/${firstId}`, { method: 'DELETE', cookie: login.cookie })
 })
 
+test('云端文件：客户端不传指纹，服务端也按内容判重', async () => {
+  const login = await call('/api/auth/login', { method: 'POST', body: alice })
+  const body = '不传 hash 的同一段内容'
+
+  // 两次都不带 x-hash，服务端落盘后自己算 SHA-256 前 16 位
+  const first = await fetch(`${BASE}/api/assets?kind=book`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', 'x-title': encodeURIComponent('同一本书'), cookie: login.cookie },
+    body,
+  })
+  assert.equal(first.status, 201)
+
+  const second = await fetch(`${BASE}/api/assets?kind=book`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', 'x-title': encodeURIComponent('同一本书改名'), cookie: login.cookie },
+    body,
+  })
+  assert.equal(second.status, 200)
+  const secondData = await second.json()
+  assert.equal(secondData.duplicate, true)
+
+  // 列表里该内容只有一条，且被回填了真实指纹（非空）
+  const listed = await call('/api/assets?kind=book')
+  const mine = listed.body.assets.filter((asset) => asset.title.includes('同一本书'))
+  assert.equal(mine.length, 1)
+  assert.ok(mine[0].hash, '应回填内容指纹')
+
+  await call(`/api/assets/${mine[0].id}`, { method: 'DELETE', cookie: login.cookie })
+})
+
 test('云端文件：上传的 HTML 不会被当页面执行', async () => {
   const login = await call('/api/auth/login', { method: 'POST', body: alice })
   const uploaded = await fetch(`${BASE}/api/assets?kind=track`, {

@@ -1,8 +1,15 @@
-import { randomBytes, scryptSync, timingSafeEqual, randomUUID } from 'node:crypto'
+import { randomBytes, scryptSync, timingSafeEqual, randomUUID, createHash } from 'node:crypto'
 import { row, run } from './db.mjs'
+import { readFileSync } from 'node:fs'
 
 const SESSION_DAYS = 30
 const COOKIE = 'banyue_sid'
+
+/** 内容指纹：SHA-256 前 16 位，与前端口径一致（用于云端文件判重） */
+export function contentHash(filePath) {
+  const digest = createHash('sha256').update(readFileSync(filePath)).digest('hex')
+  return digest.slice(0, 16)
+}
 
 /** 环境变量里列出的用户名始终算管理员（便于自建部署和测试） */
 const ENV_ADMINS = new Set(
