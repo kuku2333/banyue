@@ -131,8 +131,8 @@ function onHitContextMenu(event: MouseEvent): void {
   openCommentEditor(Number(target.dataset.para ?? 0))
 }
 
-/** 评论按钮/评论面板也埋在热区下面：点击要转发给它们，不能翻页 */
-const INTERACTIVE_SELECTOR = '.p-cmt-count, .p-cmt-panel, .sel-check'
+/** 评论按钮/勾选框也埋在热区下面：点击要转发给它们，不能翻页 */
+const INTERACTIVE_SELECTOR = '.p-cmt-count, .sel-check'
 
 function forwardTapClick(event: MouseEvent): boolean {
   const hit = document.querySelector<HTMLElement>('.hit-area')
@@ -655,7 +655,6 @@ onBeforeUnmount(() => {
                   :text="paragraph"
                   :comments="commentsFor(index)"
                   @open-editor="openCommentEditor(index)"
-                  @remove="removeParagraphComment"
                 />
               </div>
             </div>
@@ -678,7 +677,6 @@ onBeforeUnmount(() => {
                   :text="paragraph"
                   :comments="commentsFor(index)"
                   @open-editor="openCommentEditor(index)"
-                  @remove="removeParagraphComment"
                 />
               </div>
             </div>
@@ -702,7 +700,6 @@ onBeforeUnmount(() => {
                   :text="paragraph"
                   :comments="commentsFor(index)"
                   @open-editor="openCommentEditor(index)"
-                  @remove="removeParagraphComment"
                 />
               </div>
             </div>
@@ -740,7 +737,6 @@ onBeforeUnmount(() => {
                   :text="paragraph"
                   :comments="commentsFor(index)"
                   @open-editor="openCommentEditor(index)"
-                  @remove="removeParagraphComment"
                 />
         </div>
       </div>
