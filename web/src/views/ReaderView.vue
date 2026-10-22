@@ -113,6 +113,56 @@ function openCommentEditor(index: number): void {
   commentDialogOpen.value = true
 }
 
+/*
+ * 翻页热区（hit-area）盖在段落上层，右键/长按会先落在热区上，
+ * 这里临时放开指针找到鼠标下的真实段落，再转发给评论窗。
+ */
+function findParagraphAt(x: number, y: number): HTMLElement | null {
+  const hit = document.querySelector<HTMLElement>('.hit-area')
+  if (hit) hit.style.pointerEvents = 'none'
+  const el = document.elementFromPoint(x, y)
+  if (hit) hit.style.pointerEvents = ''
+  return (el as HTMLElement | null)?.closest<HTMLElement>('[data-para]') ?? null
+}
+
+function onHitContextMenu(event: MouseEvent): void {
+  const target = findParagraphAt(event.clientX, event.clientY)
+  if (!target) return
+  openCommentEditor(Number(target.dataset.para ?? 0))
+}
+
+/* 手机长按热区也要能写评论；长按触发后吞掉随后的 click，免得又翻页 */
+let longPressTimer: number | undefined
+let longPressMoved = false
+let longPressFired = false
+
+function onHitTouchStart(event: TouchEvent): void {
+  longPressMoved = false
+  const touch = event.touches[0]
+  if (!touch) return
+  const { clientX, clientY } = touch
+  longPressTimer = window.setTimeout(() => {
+    if (longPressMoved) return
+    const target = findParagraphAt(clientX, clientY)
+    if (!target) return
+    longPressFired = true
+    openCommentEditor(Number(target.dataset.para ?? 0))
+  }, 550)
+}
+function onHitTouchMove(): void {
+  longPressMoved = true
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = undefined
+  }
+}
+function onHitTouchEnd(): void {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = undefined
+  }
+}
+
 async function submitParagraphComment(body: string): Promise<void> {
   commentBusy.value = true
   commentError.value = ''
@@ -416,7 +466,20 @@ function onPointerUp(): void {
 }
 
 /** 点击左右区域翻页；刚拖拽过就不算点击 */
+function onMidTap(): void {
+  if (longPressFired) {
+    longPressFired = false
+    return
+  }
+  chromeVisible.value = !chromeVisible.value
+}
+
 function tapTurn(delta: number): void {
+  // 长按刚唤起评论窗，别让松手后的 click 又翻页
+  if (longPressFired) {
+    longPressFired = false
+    return
+  }
   if (suppressClick) return
   void turn(delta)
 }
@@ -571,6 +634,7 @@ onBeforeUnmount(() => {
                 <ParagraphLine
                   v-for="(paragraph, index) in paragraphs"
                   :key="index"
+                  :data-para="index"
                   :text="paragraph"
                   :comments="commentsFor(index)"
                   @open-editor="openCommentEditor(index)"
@@ -593,6 +657,7 @@ onBeforeUnmount(() => {
                 <ParagraphLine
                   v-for="(paragraph, index) in paragraphs"
                   :key="index"
+                  :data-para="index"
                   :text="paragraph"
                   :comments="commentsFor(index)"
                   @open-editor="openCommentEditor(index)"
@@ -616,6 +681,7 @@ onBeforeUnmount(() => {
                 <ParagraphLine
                   v-for="(paragraph, index) in paragraphs"
                   :key="index"
+                  :data-para="index"
                   :text="paragraph"
                   :comments="commentsFor(index)"
                   @open-editor="openCommentEditor(index)"
@@ -629,13 +695,19 @@ onBeforeUnmount(() => {
 
         <span v-if="layout === 'spread'" class="spine" aria-hidden="true" />
 
-        <div class="hit-area">
+        <div
+          class="hit-area"
+          @contextmenu.prevent="onHitContextMenu($event)"
+          @touchstart.passive="onHitTouchStart"
+          @touchmove.passive="onHitTouchMove"
+          @touchend="onHitTouchEnd"
+        >
           <button type="button" class="tap left" aria-label="上一页" @click="tapTurn(-1)" />
           <button
             type="button"
             class="tap mid"
             aria-label="显示/隐藏工具栏"
-            @click="chromeVisible = !chromeVisible"
+            @click="onMidTap"
           />
           <button type="button" class="tap right" aria-label="下一页" @click="tapTurn(1)" />
         </div>
@@ -647,6 +719,7 @@ onBeforeUnmount(() => {
           <ParagraphLine
                   v-for="(paragraph, index) in paragraphs"
                   :key="index"
+                  :data-para="index"
                   :text="paragraph"
                   :comments="commentsFor(index)"
                   @open-editor="openCommentEditor(index)"
