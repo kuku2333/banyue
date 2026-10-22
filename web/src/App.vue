@@ -6,8 +6,11 @@ import SiteFooter from '@/components/SiteFooter.vue'
 import MobileTabs from '@/components/MobileTabs.vue'
 import SearchOverlay from '@/components/SearchOverlay.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
+import AuthDialog from '@/components/AuthDialog.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
+const auth = useAuthStore()
 const searchOpen = ref(false)
 const progress = ref(0)
 
@@ -29,6 +32,7 @@ onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('keydown', onKeydown)
   onScroll()
+  void auth.ensure()
 })
 
 onUnmounted(() => {
@@ -55,6 +59,7 @@ const isPost = computed(() => route.name === 'post')
   <SiteFooter />
   <MobileTabs />
   <PlayerBar />
+  <AuthDialog v-model:open="auth.dialogOpen" />
   <SearchOverlay v-model:open="searchOpen" />
 </template>
 

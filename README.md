@@ -4,18 +4,21 @@
 
 ```
 blog/
-├── web/                  # 新站（Vue 3 + Vite + TypeScript）
+├── web/                  # 前端（Vue 3 + Vite + TypeScript）
 │   ├── src/
 │   │   ├── components/   # 布局与复用组件
 │   │   ├── views/        # 路由页面
-│   │   ├── lib/          # Markdown 渲染、内容聚合、格式化
+│   │   ├── lib/          # Markdown 渲染、内容聚合、接口封装
 │   │   ├── stores/       # Pinia 状态
 │   │   └── content/posts # 文章（Markdown + frontmatter）
 │   ├── tests/            # Vitest 单测
 │   └── public/
+├── server/               # 自建后端（Node 原生 http + node:sqlite，无第三方依赖）
+│   ├── src/              # db / auth / 路由
+│   └── test/             # node:test 接口测试
 ├── legacy/banyue-blog/   # v1.1 单文件版本（归档，不再修改）
 ├── releases/             # 发布快照（zip）
-├── docs/                 # 架构决策、部署手册
+├── docs/                 # 架构决策、部署手册、后端说明
 └── .github/workflows/    # CI：构建 + 部署
 ```
 
@@ -25,6 +28,14 @@ blog/
 cd web
 pnpm install
 pnpm dev          # http://localhost:5173
+```
+
+账号、收藏夹、书签、评论需要后端（可选）：另开一个终端
+
+```bash
+cd server
+node src/index.mjs        # http://localhost:8787，前端 /api 已代理到它
+node --test test/api.test.mjs   # 接口测试
 ```
 
 提交前至少跑：
@@ -72,6 +83,8 @@ featured: false
 | 2 | 书架与阅读器（IndexedDB、分章、四种主题、左右对开 3D 翻书、进度记忆） | 已完成 |
 | 3 | 听歌台（Apple Music 榜单、本地音乐、收藏、队列、律动频谱、可拖拽播放器） | 已完成 |
 | 4 | 写作台（本地草稿、Markdown 预览、自动保存、导出 .md） | 已完成 |
-| 5 | 部署：自建服务器（nginx/Caddy + rsync） | 待开始 |
+| 5 | 账号系统 + 收藏夹（自建后端、公开可见、带用户名） | 已完成 |
+| 6 | 书签与评论 UI（接口已就绪，页面待接） | 进行中 |
+| 7 | 部署：自建服务器（nginx/Caddy + rsync） | 待开始 |
 
 详见 [docs/deploy.md](docs/deploy.md) 与 [docs/adr](docs/adr/)。

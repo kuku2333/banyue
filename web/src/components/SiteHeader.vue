@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const emit = defineEmits<{ 'open-search': [] }>()
 const route = useRoute()
+const auth = useAuthStore()
 
 interface NavLink {
   to: string
@@ -57,6 +59,73 @@ const isActive = (link: NavLink): boolean => link.names.includes(activeName.valu
           <path d="M20 20l-3.5-3.5" />
         </svg>
       </button>
+
+      <RouterLink v-if="auth.loggedIn" class="user-chip" to="/collections" :title="`@${auth.user?.username}`">
+        <span class="avatar">{{ auth.user?.displayName?.slice(0, 1) ?? '·' }}</span>
+        <b>{{ auth.user?.displayName ?? auth.user?.username }}</b>
+      </RouterLink>
+      <button v-else class="login-btn" type="button" @click="auth.openDialog()">登录</button>
     </div>
   </header>
 </template>
+
+<style scoped>
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--text-2);
+  font-size: 0.8rem;
+  transition: 0.15s ease;
+}
+
+.user-chip:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.user-chip .avatar {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.72rem;
+}
+
+.user-chip b {
+  font-weight: 500;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.login-btn {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--text-2);
+  font-size: 0.8rem;
+}
+
+.login-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
+@media (max-width: 767px) {
+  .user-chip b {
+    display: none;
+  }
+
+  .user-chip {
+    padding: 4px;
+  }
+}
+</style>

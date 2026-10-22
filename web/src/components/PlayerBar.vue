@@ -2,11 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useStorage, useWindowSize } from '@vueuse/core'
 import { PLAY_MODES, usePlayerStore } from '@/stores/player'
+import CollectionPicker from '@/components/CollectionPicker.vue'
 import { formatTime } from '@/lib/music'
 import { hashCode } from '@/lib/cover'
 
 const player = usePlayerStore()
 const queueOpen = ref(false)
+const pickerOpen = ref(false)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const orbCanvas = ref<HTMLCanvasElement | null>(null)
 const pos = useStorage('banyue:player:pos', { right: 20, bottom: 20 })
@@ -383,6 +385,7 @@ onBeforeUnmount(() => {
           <span aria-hidden="true">{{ modeInfo.icon }}</span
           >{{ modeInfo.label }}
         </button>
+        <button type="button" class="p-mode" @click="pickerOpen = true">加入歌单</button>
         <label class="p-vol">
           <svg
             viewBox="0 0 24 24"
@@ -430,6 +433,13 @@ onBeforeUnmount(() => {
       <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
     </span>
   </button>
+
+  <CollectionPicker
+    :open="pickerOpen"
+    type="music"
+    :item="player.current ? { key: player.current.id, title: player.current.title, subtitle: player.current.artist } : null"
+    @update:open="pickerOpen = $event"
+  />
 </template>
 
 <style scoped>

@@ -27,3 +27,6 @@ pnpm-debug.log*
 
 # 本地视觉自检截图
 .shots/
+
+# 服务端本地数据库
+server/data/
