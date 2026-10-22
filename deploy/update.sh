@@ -29,7 +29,8 @@ die()  { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
 cd "$APP_DIR"
 if [[ -d .git ]] && command -v git >/dev/null; then
   log "拉取最新代码（git pull）..."
-  if ! git pull --ff-only; then
+  # 显式指定 origin main，避免新环境没设 upstream 时裸 pull 失效
+  if ! git pull --ff-only origin main; then
     log "git pull 未成功（可能是非快进或有本地改动），使用当前工作区文件继续"
   fi
 else
