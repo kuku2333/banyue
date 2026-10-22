@@ -1,0 +1,5 @@
+# Caddy 配置模板 —— deploy/install.sh 用实际域名/端口填充后写入 /etc/caddy/Caddyfile
+# 作用：公网 HTTPS + 反向代理到本机 __PORT__
+__DOMAIN__ {
+    reverse_proxy 127.0.0.1:__PORT__
+}

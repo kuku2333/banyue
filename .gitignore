@@ -9,6 +9,11 @@ coverage/
 .env
 .env.local
 .env.*.local
+deploy/.env
+
+# 本地运行日志
+server/server.log
+web/vite.log
 
 # 编辑器 / 系统
 .DS_Store

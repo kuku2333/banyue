@@ -7,7 +7,11 @@ cd server
 node src/index.mjs              # 默认 8787
 PORT=9000 node src/index.mjs    # 换端口
 BANYUE_DB=/path/db.sqlite node src/index.mjs
+BANYUE_FILES_DIR=/path/files node src/index.mjs   # 上传文件目录（默认 server/data/files）
 ```
+
+环境变量：`PORT`（端口）、`BANYUE_DB`（数据库路径）、`BANYUE_FILES_DIR`（上传文件目录）、
+`BANYUE_QUOTA_MB`（每账号容量）、`BANYUE_ADMINS`（管理员用户名，逗号分隔）。
 
 前端开发时 Vite 已把 `/api` 代理到 `127.0.0.1:8787`（见 `web/vite.config.ts`）。
 生产环境同一个进程也能直接托管 `web/dist`（存在时自动启用，SPA 回退到 `index.html`）。

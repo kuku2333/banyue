@@ -25,7 +25,9 @@ import {
 const PORT = Number(process.env.PORT ?? 8787)
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DIST = resolve(ROOT, '../web/dist')
-const FILES_DIR = resolve(ROOT, 'data/files')
+const FILES_DIR = process.env.BANYUE_FILES_DIR
+  ? resolve(process.env.BANYUE_FILES_DIR)
+  : resolve(ROOT, 'data/files')
 const MAX_BODY = 64 * 1024
 const UPLOAD_LIMITS = { book: 50 * 1024 * 1024, track: 40 * 1024 * 1024 }
 /** 每个账号的云端总容量（MB），默认 200 */

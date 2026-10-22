@@ -4,59 +4,58 @@
 > 先只做本地验证，等自有服务器就绪后**自建部署**（§5 有可直接抄的配置）。
 > 下面的平台对比保留作为备选参考。
 
-## 0. 自建部署（当前路线）
+## 0. 自建部署（当前路线：一键脚本）
+
+把整个项目拷贝到 Ubuntu 服务器后，跑一个脚本即完成部署：
 
 ```bash
-# web/ 下构建
-pnpm install && pnpm build        # 产物在 web/dist
+# 1) 拷贝项目（本地执行）
+rsync -avz --exclude node_modules --exclude web/dist \
+  ./ user@服务器:/opt/banyue/
 
-# 推到服务器（nginx 静态目录）
-rsync -avz --delete web/dist/ user@server:/var/www/banyue/
-
-# 服务器上：Caddy 两行搞定 HTTPS
-# /etc/caddy/Caddyfile
-# banyue.example.com {
-#     root * /var/www/banyue
-#     try_files {path} /index.html   # SPA 回退
-#     file_server
-# }
+# 2) 服务器上执行（root）
+ssh user@服务器
+cd /opt/banyue
+cp deploy/.env.example deploy/.env   # 按需填 DOMAIN / QUOTA_MB / ADMINS
+sudo bash deploy/install.sh
 ```
 
-nginx 等价配置：
+`deploy/install.sh` 会依次：
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name banyue.example.com;
+1. 探测/安装 Node.js 22（`node:sqlite` 需要 ≥ 22.5）
+2. 安装 pnpm（corepack）
+3. `pnpm install && pnpm build` 构建前端
+4. 用 systemd 把后端跑成服务 `banyue`（开机自启、崩溃自动重启）
+5. `deploy/.env` 里填了 `DOMAIN` 就用 Caddy 自动 HTTPS 反代；没填则直接暴露 `PORT`（默认 8787）
+6. 放行 ufw 防火墙端口 + 健康检查
 
-    root /var/www/banyue;
-    index index.html;
+可重复执行（幂等）。数据（SQLite + 上传文件）都在 `server/data/`，升级代码时重跑脚本不会丢数据。
 
-    # SPA 路由：找不到文件时回退到 index.html
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
+### 部署后的运维
 
-    # 带 hash 的静态资源可以长缓存
-    location /assets/ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
+```bash
+systemctl status banyue                 # 看状态
+journalctl -u banyue -f                 # 看日志
+systemctl restart banyue                # 重启
+node server/scripts/grant-admin.mjs <用户名>   # 设管理员
 ```
+
+### 环境变量（`deploy/.env`）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `PORT` | 8787 | 后端监听端口 |
+| `DOMAIN` | 空 | 填了启用 Caddy HTTPS，域名需已解析到本机 IP |
+| `QUOTA_MB` | 200 | 每账号云端容量上限 |
+| `ADMINS` | 空 | 管理员用户名，逗号分隔 |
+| `DATA_DIR` | `<项目>/server/data` | 数据目录（db + files） |
 
 要点：
 
-- `web/dist` 是纯静态文件，**不需要 Node 运行时**；
-- 但纯静态只够「读文章」：书架 / 写作台 / 本地音乐靠浏览器 IndexedDB，能用；
-  **账号、收藏夹、书签、评论、云端文件需要 `server/`**——`node server/src/index.mjs` 会顺带托管 `web/dist`，
-  前端同源调 `/api/*`，一个域名就够。只发 dist 时，前端会提示「这个部署没有后端接口」；
-- SPA 回退必须配（`try_files` / `try_files {path} /index.html`），否则刷新 `/post/xxx` 会 404；
-  交给 Node 托管时不用再叠 nginx 的 fallback，服务端已经处理（缺失的 `.js/.css` 会正确 404 而不是回退成 HTML）；
-- `vite build` 已经把 `_redirects`、`404.html` 一起生成，托管方支持哪个用哪个；
-- 本地验证等价于线上：`pnpm build && pnpm preview` 起的就是最终产物（没有 `/api`，云端功能会报错）；
-- 媒体文件（书、音乐）默认不上传服务器，只存在读者浏览器里；「传到云端」才会进 `server/data/files`。
-- 媒体文件（书、音乐）不上传服务器，只存在读者浏览器里，服务器只发静态文件。
+- **后端一个进程搞定全部**：`node server/src/index.mjs` 同时托管 `web/dist` 和 `/api/*`，
+  所以不需要单独的 nginx 静态站；只发 dist 的话，前端会提示「这个部署没有后端接口」。
+- SPA 回退由后端处理（缺失的 `.js/.css` 正确 404，不会回退成 HTML）。
+- 上传的书/音乐存 `server/data/files/`，SQLite 在 `server/data/banyue.db`，备份时整个 `server/data/` 打包即可。
 
 ## 1. 为什么必须有一个账号（备选方案的前提）
 

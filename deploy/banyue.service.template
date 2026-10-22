@@ -1,0 +1,27 @@
+# systemd 单元模板 —— 由 deploy/install.sh 用实际路径与端口填充后写入 /etc/systemd/system/banyue.service
+[Unit]
+Description=Banyue (半页) personal site backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# __APP_DIR__ / __PORT__ / __DATA_DIR__ 等占位符由 install.sh 替换
+WorkingDirectory=__APP_DIR__/server
+Environment=PORT=__PORT__
+Environment=BANYUE_DB=__DATA_DIR__/banyue.db
+Environment=BANYUE_FILES_DIR=__DATA_DIR__/files
+Environment=BANYUE_QUOTA_MB=__QUOTA_MB__
+__ADMIN_ENV__
+ExecStart=__NODE_BIN__ src/index.mjs
+Restart=always
+RestartSec=2
+
+# 安全加固（不追求极致，但比裸跑强）
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=__DATA_DIR__
+
+[Install]
+WantedBy=multi-user.target
