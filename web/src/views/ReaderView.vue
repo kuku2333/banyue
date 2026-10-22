@@ -131,6 +131,20 @@ function onHitContextMenu(event: MouseEvent): void {
   openCommentEditor(Number(target.dataset.para ?? 0))
 }
 
+/** 评论按钮/评论面板也埋在热区下面：点击要转发给它们，不能翻页 */
+const INTERACTIVE_SELECTOR = '.p-cmt-count, .p-cmt-panel, .sel-check'
+
+function forwardTapClick(event: MouseEvent): boolean {
+  const hit = document.querySelector<HTMLElement>('.hit-area')
+  if (hit) hit.style.pointerEvents = 'none'
+  const el = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null
+  if (hit) hit.style.pointerEvents = ''
+  if (!el?.closest(INTERACTIVE_SELECTOR)) return false
+  // 点真实元素（按钮/复选框自身），不是外层容器
+  el.click()
+  return true
+}
+
 /* 手机长按热区也要能写评论；长按触发后吞掉随后的 click，免得又翻页 */
 let longPressTimer: number | undefined
 let longPressMoved = false
@@ -466,21 +480,24 @@ function onPointerUp(): void {
 }
 
 /** 点击左右区域翻页；刚拖拽过就不算点击 */
-function onMidTap(): void {
+function onMidTap(event: MouseEvent): void {
   if (longPressFired) {
     longPressFired = false
     return
   }
+  if (forwardTapClick(event)) return
   chromeVisible.value = !chromeVisible.value
 }
 
-function tapTurn(delta: number): void {
+function tapTurn(delta: number, event: MouseEvent): void {
   // 长按刚唤起评论窗，别让松手后的 click 又翻页
   if (longPressFired) {
     longPressFired = false
     return
   }
   if (suppressClick) return
+  // 点在评论按钮/评论面板上：转发点击，不翻页
+  if (forwardTapClick(event)) return
   void turn(delta)
 }
 
@@ -702,14 +719,14 @@ onBeforeUnmount(() => {
           @touchmove.passive="onHitTouchMove"
           @touchend="onHitTouchEnd"
         >
-          <button type="button" class="tap left" aria-label="上一页" @click="tapTurn(-1)" />
+          <button type="button" class="tap left" aria-label="上一页" @click="tapTurn(-1, $event)" />
           <button
             type="button"
             class="tap mid"
             aria-label="显示/隐藏工具栏"
-            @click="onMidTap"
+            @click="onMidTap($event)"
           />
-          <button type="button" class="tap right" aria-label="下一页" @click="tapTurn(1)" />
+          <button type="button" class="tap right" aria-label="下一页" @click="tapTurn(1, $event)" />
         </div>
       </div>
 
