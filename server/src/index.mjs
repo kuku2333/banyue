@@ -511,6 +511,55 @@ route('DELETE', '/api/songs/:key/comments/:id', async (req, res, params) => {
   send(res, 200, { ok: true })
 })
 
+/* 段落评论（小说阅读器：某一段右键/长按评论，公开可见） */
+
+route('GET', '/api/books/:key/paragraphs/:chapter/comments', async (req, res, params) => {
+  const list = rows(
+    `SELECT p.id, p.paragraph, p.body, p.created_at, u.username, u.display_name
+     FROM paragraph_comments p JOIN users u ON u.id = p.user_id
+     WHERE p.book_key = ? AND p.chapter = ? ORDER BY p.paragraph ASC, p.created_at ASC LIMIT 1000`,
+    [params.key, Number(params.chapter) || 0],
+  )
+  const user = userFromRequest(req)
+  send(res, 200, {
+    comments: list.map((item) => ({
+      id: item.id,
+      paragraph: item.paragraph,
+      body: item.body,
+      createdAt: item.created_at,
+      owner: { username: item.username, displayName: item.display_name },
+      mine: user?.username === item.username,
+    })),
+  })
+})
+
+route('POST', '/api/books/:key/paragraphs/:chapter/comments', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const body = await readBody(req)
+  const text = String(body.body ?? '').trim()
+  const paragraph = Number(body.paragraph)
+  if (text.length < 1) return fail(res, 400, '评论不能为空')
+  if (text.length > 500) return fail(res, 400, '评论最多 500 字')
+  if (!Number.isInteger(paragraph) || paragraph < 0) return fail(res, 400, '段落位置不对')
+  const id = newId('pc')
+  run(
+    'INSERT INTO paragraph_comments (id, book_key, chapter, paragraph, user_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, params.key.slice(0, 200), Number(params.chapter) || 0, paragraph, user.id, text, Date.now()],
+  )
+  send(res, 201, { id })
+})
+
+route('DELETE', '/api/paragraph-comments/:id', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const comment = row('SELECT user_id FROM paragraph_comments WHERE id = ?', [params.id])
+  if (!comment) return fail(res, 404, '评论不存在')
+  if (!canManage(user, comment.user_id)) return fail(res, 403, '只能删自己的评论')
+  run('DELETE FROM paragraph_comments WHERE id = ?', [params.id])
+  send(res, 200, { ok: true })
+})
+
 /* 云端文件（书 / 音乐） */
 
 const EXT_BY_MIME = {

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useShelfStore } from '@/stores/shelf'
 import { useAuthStore } from '@/stores/auth'
 import CollectionPicker from '@/components/CollectionPicker.vue'
+import BatchBar from '@/components/BatchBar.vue'
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import { cleanBookText, decodeText, splitChapters } from '@/lib/books'
 import { getBook, putBook } from '@/lib/db'
@@ -194,6 +195,76 @@ async function remove(id: string, title: string): Promise<void> {
   await shelf.remove(id)
 }
 
+/* 批量删除（本地书架 / 云端书库） */
+const selectMode = ref<'shelf' | 'cloud' | null>(null)
+const selected = ref<string[]>([])
+const batchBusy = ref(false)
+
+function enterSelectMode(scope: 'shelf' | 'cloud'): void {
+  selectMode.value = scope
+  selected.value = []
+}
+function exitSelectMode(): void {
+  selectMode.value = null
+  selected.value = []
+}
+function isSelected(id: string): boolean {
+  return selected.value.includes(id)
+}
+function toggleSelect(id: string): void {
+  selected.value = selected.value.includes(id)
+    ? selected.value.filter((item) => item !== id)
+    : [...selected.value, id]
+}
+
+const cloudDeletableIds = computed(() =>
+  cloudBooks.value.filter((asset) => asset.mine || auth.user?.isAdmin).map((asset) => asset.id),
+)
+function currentIds(): string[] {
+  return selectMode.value === 'cloud' ? cloudDeletableIds.value : shelf.books.map((book) => book.id)
+}
+function toggleAllCurrent(): void {
+  const ids = currentIds()
+  selected.value = selected.value.length >= ids.length ? [] : [...ids]
+}
+
+/** 批量删除：确认后按当前区删本地书或云端书 */
+async function batchDelete(): Promise<void> {
+  if (!selected.value.length || batchBusy.value) return
+  const count = selected.value.length
+  const isCloud = selectMode.value === 'cloud'
+  if (!window.confirm(isCloud ? `从云端删除选中的 ${count} 本书？` : `从书架删除选中的 ${count} 本书？本地文件也会删掉。`)) {
+    return
+  }
+  batchBusy.value = true
+  try {
+    if (isCloud) {
+      for (const id of selected.value) {
+        try {
+          await deleteAsset(id)
+        } catch {
+          /* 单本失败继续 */
+        }
+      }
+      await loadCloud()
+    } else {
+      for (const id of selected.value) await shelf.remove(id)
+    }
+    exitSelectMode()
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    batchBusy.value = false
+  }
+}
+
+/** 批量模式下点卡片改为选中（不跳阅读页） */
+function onCardClick(event: MouseEvent, id: string): void {
+  if (!selectMode.value) return
+  event.preventDefault()
+  toggleSelect(id)
+}
+
 const totalWords = computed(() => shelf.books.reduce((sum, book) => sum + book.words, 0))
 const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0) >= 0.999).length)
 </script>
@@ -225,6 +296,15 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
       <b>把 TXT / Markdown 拖进来</b>
       <span class="muted">或者</span>
       <button type="button" class="btn" :disabled="busy" @click="inputRef?.click()">选择文件</button>
+      <button
+        v-if="shelf.books.length"
+        type="button"
+        class="btn"
+        :class="{ on: selectMode === 'shelf' }"
+        @click="selectMode === 'shelf' ? exitSelectMode() : enterSelectMode('shelf')"
+      >
+        {{ selectMode === 'shelf' ? '完成' : '批量管理' }}
+      </button>
       <input id="shelf-file-input" ref="inputRef" type="file" accept=".txt,.md,.markdown,text/plain" multiple hidden @change="onPick" />
       <p class="muted small">自动识别 UTF-8 / GBK，按「第 X 章」切分，识别不到就按字数切节。</p>
     </div>
@@ -239,8 +319,17 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
     </div>
 
     <div v-else class="book-grid">
-      <article v-for="book in shelf.books" :key="book.id" class="book-card">
-        <RouterLink :to="`/read/${book.id}`" class="book-main">
+      <article
+        v-for="book in shelf.books"
+        :key="book.id"
+        class="book-card"
+        :class="{ selected: selectMode === 'shelf' && isSelected(book.id) }"
+      >
+        <RouterLink
+          :to="`/read/${book.id}`"
+          class="book-main"
+          @click="onCardClick($event, book.id)"
+        >
           <div class="book-spine" :data-seed="book.id.slice(-2)">{{ book.title.slice(0, 1) }}</div>
           <div class="book-info">
             <h3>{{ book.title }}</h3>
@@ -256,19 +345,24 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
               · 导入于 {{ formatDate(localDateStamp(book.createdAt)) }}
             </p>
           </div>
+          <label v-if="selectMode === 'shelf'" class="sel-check" @click.stop>
+            <input type="checkbox" :checked="isSelected(book.id)" @change="toggleSelect(book.id)" />
+          </label>
         </RouterLink>
-        <button type="button" class="book-del" :aria-label="`删除《${book.title}》`" @click="remove(book.id, book.title)">
-          删除
-        </button>
-        <button type="button" class="book-collect" @click="addToCollection(book)">收藏夹</button>
-        <button
-          type="button"
-          class="book-cloud"
-          :disabled="cloudBusy === book.id"
-          @click="uploadBook(book)"
-        >
-          {{ cloudBusy === book.id ? '上传中…' : '传到云端' }}
-        </button>
+        <template v-if="!selectMode">
+          <button type="button" class="book-del" :aria-label="`删除《${book.title}》`" @click="remove(book.id, book.title)">
+            删除
+          </button>
+          <button type="button" class="book-collect" @click="addToCollection(book)">收藏夹</button>
+          <button
+            type="button"
+            class="book-cloud"
+            :disabled="cloudBusy === book.id"
+            @click="uploadBook(book)"
+          >
+            {{ cloudBusy === book.id ? '上传中…' : '传到云端' }}
+          </button>
+        </template>
       </article>
     </div>
 
@@ -298,13 +392,34 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
         >
           {{ cloudBusy === 'new' ? '上传中…' : '上传书到云端' }}
         </button>
+        <button
+          v-if="cloudDeletableIds.length"
+          type="button"
+          class="btn small-btn"
+          :class="{ on: selectMode === 'cloud' }"
+          @click="selectMode === 'cloud' ? exitSelectMode() : enterSelectMode('cloud')"
+        >
+          {{ selectMode === 'cloud' ? '完成' : '批量管理' }}
+        </button>
       </div>
     </div>
     <p v-if="cloudError" class="error">{{ cloudError }}</p>
     <p v-if="cloudLoading" class="muted small">正在加载云端书库…</p>
     <p v-else-if="!cloudBooks.length" class="muted small">云端还没有书。把书架里的书「传到云端」就会出现在这里。</p>
     <ul v-else class="cloud-list">
-      <li v-for="asset in cloudBooks" :key="asset.id">
+      <li
+        v-for="asset in cloudBooks"
+        :key="asset.id"
+        :class="{ selected: selectMode === 'cloud' && isSelected(asset.id) }"
+        @click="selectMode === 'cloud' && (asset.mine || auth.user?.isAdmin) && toggleSelect(asset.id)"
+      >
+        <label
+          v-if="selectMode === 'cloud' && (asset.mine || auth.user?.isAdmin)"
+          class="sel-check"
+          @click.stop
+        >
+          <input type="checkbox" :checked="isSelected(asset.id)" @change="toggleSelect(asset.id)" />
+        </label>
         <div class="cloud-main">
           <b>{{ asset.title }}</b>
           <span>
@@ -312,12 +427,14 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
             {{ asset.owner.displayName }}<template v-if="asset.mine">（我）</template>
           </span>
         </div>
-        <button type="button" class="cloud-btn" :disabled="cloudBusy === asset.id" @click="downloadBook(asset)">
-          {{ cloudBusy === asset.id ? '下载中…' : '下载到书架' }}
-        </button>
-        <button v-if="asset.mine || auth.user?.isAdmin" type="button" class="cloud-del" @click="removeCloud(asset)">
-          删除
-        </button>
+        <template v-if="!selectMode">
+          <button type="button" class="cloud-btn" :disabled="cloudBusy === asset.id" @click="downloadBook(asset)">
+            {{ cloudBusy === asset.id ? '下载中…' : '下载到书架' }}
+          </button>
+          <button v-if="asset.mine || auth.user?.isAdmin" type="button" class="cloud-del" @click="removeCloud(asset)">
+            删除
+          </button>
+        </template>
       </li>
     </ul>
 
@@ -326,6 +443,17 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
       type="books"
       :item="pickerItem"
       @update:open="pickerOpen = $event"
+    />
+
+    <BatchBar
+      v-if="selectMode"
+      :count="selected.length"
+      :total="currentIds().length"
+      :busy="batchBusy"
+      :label="selectMode === 'cloud' ? '云端删除' : '删除'"
+      @toggle-all="toggleAllCurrent"
+      @delete="batchDelete"
+      @cancel="exitSelectMode"
     />
   </div>
 </template>
@@ -596,5 +724,31 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
 .error {
   color: var(--danger);
   font-size: 0.8rem;
+}
+
+/* 批量管理选中态 */
+.book-card.selected,
+.cloud-list li.selected {
+  outline: 2px solid color-mix(in oklab, var(--accent, #38bdf8) 65%, transparent);
+  background: color-mix(in oklab, var(--accent, #38bdf8) 10%, transparent);
+}
+.sel-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  padding: 2px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--bg, #0b0f16) 70%, transparent);
+  cursor: pointer;
+}
+.sel-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent, #38bdf8);
+  cursor: pointer;
+}
+.cloud-list li {
+  position: relative;
 }
 </style>

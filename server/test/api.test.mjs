@@ -471,3 +471,51 @@ test('内置管理员：启动即可登录且是管理员', async () => {
   assert.equal(login.body.user.username, 'ttbvb')
   assert.equal(login.body.user.isAdmin, true)
 })
+
+test('段落评论：按段发布、公开可读、只有作者能删', async () => {
+  const login = await call('/api/auth/login', { method: 'POST', body: alice })
+  const member = await call('/api/auth/register', {
+    method: 'POST',
+    body: { username: 'grace', password: 'secret123', displayName: '格蕾丝' },
+  })
+
+  const posted = await call('/api/books/book-demo/paragraphs/3/comments', {
+    method: 'POST',
+    body: { paragraph: 12, body: '这段写得真好' },
+    cookie: login.cookie,
+  })
+  assert.equal(posted.status, 201)
+  const commentId = posted.body.id
+
+  // 空评论/坏段落号被拒
+  const empty = await call('/api/books/book-demo/paragraphs/3/comments', {
+    method: 'POST',
+    body: { paragraph: 1, body: '   ' },
+    cookie: login.cookie,
+  })
+  assert.equal(empty.status, 400)
+  const badPara = await call('/api/books/book-demo/paragraphs/3/comments', {
+    method: 'POST',
+    body: { paragraph: -2, body: 'x' },
+    cookie: login.cookie,
+  })
+  assert.equal(badPara.status, 400)
+
+  // 公开可读，带作者信息
+  const listed = await call('/api/books/book-demo/paragraphs/3/comments', { cookie: login.cookie })
+  assert.equal(listed.status, 200)
+  const found = listed.body.comments.find((item) => item.id === commentId)
+  assert.ok(found)
+  assert.equal(found.paragraph, 12)
+  assert.equal(found.owner.username, 'alice')
+  assert.equal(found.mine, true)
+
+  // 别人删不掉，作者能删
+  const denied = await call(`/api/paragraph-comments/${commentId}`, { method: 'DELETE', cookie: member.cookie })
+  assert.equal(denied.status, 403)
+  const removed = await call(`/api/paragraph-comments/${commentId}`, { method: 'DELETE', cookie: login.cookie })
+  assert.equal(removed.status, 200)
+
+  const after = await call('/api/books/book-demo/paragraphs/3/comments')
+  assert.equal(after.body.comments.length, 0)
+})

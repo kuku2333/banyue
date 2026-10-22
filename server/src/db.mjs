@@ -66,9 +66,20 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS paragraph_comments (
+    id TEXT PRIMARY KEY,
+    book_key TEXT NOT NULL,
+    chapter INTEGER NOT NULL,
+    paragraph INTEGER NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_items_collection ON collection_items(collection_id);
   CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_key);
   CREATE INDEX IF NOT EXISTS idx_comments_song ON song_comments(song_key);
+  CREATE INDEX IF NOT EXISTS idx_pc_book_chapter ON paragraph_comments(book_key, chapter);
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
   CREATE TABLE IF NOT EXISTS assets (

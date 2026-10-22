@@ -7,6 +7,7 @@ import { addTrack, deleteTrack, findTrackByHash, getTrackBlob, listTracks, type 
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, syncTracksToCloud, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import { BILI_HOT, BILI_SNAP } from '@/lib/bili'
 import { formatCount } from '@/lib/format'
+import BatchBar from '@/components/BatchBar.vue'
 
 type Tab = 'charts' | 'search' | 'local' | 'cloud' | 'favs' | 'bili' | 'douyin'
 
@@ -204,6 +205,92 @@ async function downloadAllToLocal(): Promise<void> {
   setTimeout(() => (message.value = ''), 5000)
   downloading.value = false
   downloadProgress.value = ''
+}
+
+/* 批量删除（本地音乐 / 云端音乐通用） */
+const selectMode = ref(false)
+const selected = ref<string[]>([])
+const batchBusy = ref(false)
+
+function enterSelectMode(): void {
+  selectMode.value = true
+  selected.value = []
+}
+function exitSelectMode(): void {
+  selectMode.value = false
+  selected.value = []
+}
+function toggleSelect(id: string): void {
+  selected.value = selected.value.includes(id)
+    ? selected.value.filter((item) => item !== id)
+    : [...selected.value, id]
+}
+function toggleAll(ids: string[]): void {
+  selected.value = selected.value.length >= ids.length ? [] : [...ids]
+}
+function isSelected(id: string): boolean {
+  return selected.value.includes(id)
+}
+
+/** 云端可删项（自己的或管理员可删任意） */
+function cloudDeletable(asset: CloudAsset | undefined): boolean {
+  return Boolean(asset && (asset.mine || auth.user?.isAdmin))
+}
+const cloudDeletableIds = computed(() =>
+  cloudTracks.value.filter((asset) => cloudDeletable(asset)).map((asset) => asset.id),
+)
+
+/** 全选：当前 tab 的可删项 */
+function currentIds(): string[] {
+  return tab.value === 'cloud' ? cloudDeletableIds.value : localTracks.value.map((track) => track.id)
+}
+function toggleAllCurrent(): void {
+  toggleAll(currentIds())
+}
+
+/** 批量删除本地音乐（IndexedDB） */
+async function batchDeleteLocal(): Promise<void> {
+  if (!selected.value.length || batchBusy.value) return
+  if (!window.confirm(`删除选中的 ${selected.value.length} 首本地音乐？`)) return
+  batchBusy.value = true
+  try {
+    for (const id of selected.value) await deleteTrack(id)
+    await refreshLocal()
+    message.value = `已删除 ${selected.value.length} 首本地音乐`
+    setTimeout(() => (message.value = ''), 3000)
+    exitSelectMode()
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    batchBusy.value = false
+  }
+}
+
+/** 批量删除云端音乐（服务端） */
+async function batchDeleteCloud(): Promise<void> {
+  if (!selected.value.length || batchBusy.value) return
+  if (!window.confirm(`从云端删除选中的 ${selected.value.length} 首？`)) return
+  batchBusy.value = true
+  try {
+    let failed = 0
+    for (const id of selected.value) {
+      try {
+        await deleteAsset(id)
+      } catch {
+        failed++
+      }
+    }
+    message.value = failed
+      ? `云端删除完成，${failed} 首失败`
+      : `已从云端删除 ${selected.value.length} 首`
+    setTimeout(() => (message.value = ''), 3000)
+    await loadCloud()
+    exitSelectMode()
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    batchBusy.value = false
+  }
 }
 
 const localTracks = computed<Track[]>(() =>
@@ -464,6 +551,15 @@ onMounted(() => {
           hidden
           @change="onPick"
         />
+        <button
+          v-if="localTracks.length"
+          type="button"
+          class="btn small-btn"
+          :class="{ on: selectMode }"
+          @click="selectMode ? exitSelectMode() : enterSelectMode()"
+        >
+          {{ selectMode ? '完成' : '批量管理' }}
+        </button>
         <span class="muted small">支持 mp3 / m4a / flac / wav / ogg，按内容指纹去重</span>
       </div>
       <p v-if="message" class="notice">{{ message }}</p>
@@ -474,29 +570,35 @@ onMounted(() => {
         <li
           v-for="(track, index) in localTracks"
           :key="track.id"
-          :class="{ playing: isCurrent(track) }"
-          title="双击播放 / 暂停"
-          @dblclick="player.toggleAt(localTracks, index)"
+          :class="{ playing: isCurrent(track), selected: selectMode && isSelected(track.id) }"
+          :title="selectMode ? '点击选中' : '双击播放 / 暂停'"
+          @click="selectMode && toggleSelect(track.id)"
+          @dblclick="!selectMode && player.toggleAt(localTracks, index)"
         >
+          <label v-if="selectMode" class="sel" @click.stop>
+            <input type="checkbox" :checked="isSelected(track.id)" @change="toggleSelect(track.id)" />
+          </label>
           <div class="t-main">
             <b>{{ track.title }}</b>
             <span>{{ track.artist }} · #{{ track.hash?.slice(0, 6) }}</span>
           </div>
-          <button type="button" class="play" @click="playFrom(localTracks, index)">
-            {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
-          </button>
-          <button
-            type="button"
-            class="star"
-            :class="{ on: player.isFavorite(track.id) }"
-            @click="player.toggleFavorite(track)"
-          >
-            ★
-          </button>
-          <button type="button" class="cloud-btn" :disabled="cloudBusy === track.id" @click="uploadToCloud(track)">
-            {{ cloudBusy === track.id ? '上传中…' : '传到云端' }}
-          </button>
-          <button type="button" class="del" @click="removeLocal(track.id)">删除</button>
+          <template v-if="!selectMode">
+            <button type="button" class="play" @click="playFrom(localTracks, index)">
+              {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
+            </button>
+            <button
+              type="button"
+              class="star"
+              :class="{ on: player.isFavorite(track.id) }"
+              @click="player.toggleFavorite(track)"
+            >
+              ★
+            </button>
+            <button type="button" class="cloud-btn" :disabled="cloudBusy === track.id" @click="uploadToCloud(track)">
+              {{ cloudBusy === track.id ? '上传中…' : '传到云端' }}
+            </button>
+            <button type="button" class="del" @click="removeLocal(track.id)">删除</button>
+          </template>
         </li>
       </ol>
       <p v-else class="empty">还没有本地音乐。导入几首，退出浏览器也还在。</p>
@@ -527,6 +629,15 @@ onMounted(() => {
           >
             {{ downloading ? (downloadProgress || '下载中…') : '一键下载' }}
           </button>
+          <button
+            v-if="cloudDeletableIds.length"
+            type="button"
+            class="btn small-btn"
+            :class="{ on: selectMode }"
+            @click="selectMode ? exitSelectMode() : enterSelectMode()"
+          >
+            {{ selectMode ? '完成' : '批量管理' }}
+          </button>
           <button type="button" class="btn small-btn" @click="loadCloud">刷新</button>
         </div>
       </div>
@@ -537,34 +648,47 @@ onMounted(() => {
         <li
           v-for="(track, index) in cloudList"
           :key="track.id"
-          :class="{ playing: isCurrent(track) }"
-          title="双击播放 / 暂停"
-          @dblclick="player.toggleAt(cloudList, index)"
+          :class="{
+            playing: isCurrent(track),
+            selected: selectMode && isSelected(cloudTracks[index]?.id ?? ''),
+          }"
+          :title="selectMode && cloudDeletable(cloudTracks[index]) ? '点击选中' : '双击播放 / 暂停'"
+          @click="selectMode && cloudDeletable(cloudTracks[index]) && toggleSelect(cloudTracks[index]!.id)"
+          @dblclick="!selectMode && player.toggleAt(cloudList, index)"
         >
+          <label v-if="selectMode && cloudDeletable(cloudTracks[index])" class="sel" @click.stop>
+            <input
+              type="checkbox"
+              :checked="isSelected(cloudTracks[index]?.id ?? '')"
+              @change="toggleSelect(cloudTracks[index]!.id)"
+            />
+          </label>
           <div class="t-main">
             <b>{{ track.title }}</b>
             <span>{{ cloudTracks[index]?.owner.displayName }} · {{ formatSize(cloudTracks[index]?.size ?? 0) }}</span>
           </div>
-          <button type="button" class="play" @click="playFrom(cloudList, index)">
-            {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
-          </button>
-          <button
-            type="button"
-            class="cloud-btn"
-            :disabled="cloudBusy === cloudTracks[index]?.id"
-            title="下载到本地（本地已有同文件会跳过）"
-            @click="cloudTracks[index] && downloadToLocal(cloudTracks[index]!)"
-          >
-            {{ cloudBusy === cloudTracks[index]?.id ? '下载中…' : '下载' }}
-          </button>
-          <button
-            v-if="cloudTracks[index]?.mine || auth.user?.isAdmin"
-            type="button"
-            class="del"
-            @click="removeCloud(cloudTracks[index]!)"
-          >
-            删除
-          </button>
+          <template v-if="!selectMode">
+            <button type="button" class="play" @click="playFrom(cloudList, index)">
+              {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
+            </button>
+            <button
+              type="button"
+              class="cloud-btn"
+              :disabled="cloudBusy === cloudTracks[index]?.id"
+              title="下载到本地（本地已有同文件会跳过）"
+              @click="cloudTracks[index] && downloadToLocal(cloudTracks[index]!)"
+            >
+              {{ cloudBusy === cloudTracks[index]?.id ? '下载中…' : '下载' }}
+            </button>
+            <button
+              v-if="cloudDeletable(cloudTracks[index])"
+              type="button"
+              class="del"
+              @click="removeCloud(cloudTracks[index]!)"
+            >
+              删除
+            </button>
+          </template>
         </li>
       </ol>
       <p v-else class="empty">云端还没有音乐。把「本地音乐」里的歌传到云端，别人也能听。</p>
@@ -637,6 +761,16 @@ onMounted(() => {
         <a class="btn" href="https://www.douyin.com/hot" target="_blank" rel="noopener noreferrer">抖音热榜</a>
       </div>
     </section>
+
+    <BatchBar
+      v-if="selectMode"
+      :count="selected.length"
+      :total="currentIds().length"
+      :busy="batchBusy"
+      @toggle-all="toggleAllCurrent"
+      @delete="tab === 'cloud' ? batchDeleteCloud() : batchDeleteLocal()"
+      @cancel="exitSelectMode"
+    />
   </div>
 </template>
 
@@ -831,5 +965,22 @@ onMounted(() => {
   display: flex;
   gap: 10px;
   margin-top: 14px;
+}
+
+/* 批量管理选中态 */
+.track-list li.selected {
+  background: color-mix(in oklab, var(--accent, #38bdf8) 12%, transparent);
+}
+.track-list li .sel {
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+  cursor: pointer;
+}
+.track-list li .sel input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent, #38bdf8);
+  cursor: pointer;
 }
 </style>

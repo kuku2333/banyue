@@ -5,14 +5,26 @@ import { toParagraphs } from '@/lib/books'
 import { getBook, saveProgress, type BookRecord } from '@/lib/db'
 import { useReaderStore, READER_THEMES } from '@/stores/reader'
 import { usePlayerStore } from '@/stores/player'
+import { useAuthStore } from '@/stores/auth'
 import { bookKeyFor } from '@/lib/keys'
+import {
+  deleteParagraphComment,
+  fetchChapterComments,
+  fetchLocalParagraphNotes,
+  paragraphKey,
+  postParagraphComment,
+  type ParagraphComment,
+} from '@/lib/paragraph-comments'
 import BookmarkPanel from '@/components/BookmarkPanel.vue'
+import ParagraphLine from '@/components/ParagraphLine.vue'
+import ParagraphCommentDialog from '@/components/ParagraphCommentDialog.vue'
 import type { Chapter } from '@/lib/books'
 
 const route = useRoute()
 const router = useRouter()
 const settings = useReaderStore()
 const player = usePlayerStore()
+const auth = useAuthStore()
 const bookmarkOpen = ref(false)
 
 const bookId = computed(() => String(route.params.id ?? ''))
@@ -60,6 +72,75 @@ const bookmarkKey = computed(() =>
 const bookmarkRatio = computed(() =>
   settings.mode === 'paged' ? pageIndex.value / Math.max(pageCount.value, 1) : scrollRatio.value,
 )
+
+/* 段落评论：key = chapter:paragraph，云端公开 + 未登录仅本机 */
+const paragraphComments = ref<Record<string, ParagraphComment[]>>({})
+
+async function loadParagraphComments(): Promise<void> {
+  const key = bookmarkKey.value
+  const chapterNo = chapterIndex.value
+  const total = paragraphs.value.length
+  const [cloud, local] = await Promise.all([
+    fetchChapterComments(key, chapterNo),
+    fetchLocalParagraphNotes(
+      key,
+      chapterNo,
+      Array.from({ length: total }, (_, i) => i),
+    ),
+  ])
+  // 异步返回时可能已切章/切书，丢弃过期结果
+  if (key !== bookmarkKey.value || chapterNo !== chapterIndex.value) return
+  const map: Record<string, ParagraphComment[]> = {}
+  for (const comment of [...cloud, ...local]) {
+    const k = paragraphKey(chapterNo, comment.paragraph)
+    ;(map[k] ??= []).push(comment)
+  }
+  paragraphComments.value = map
+}
+
+function commentsFor(index: number): ParagraphComment[] {
+  return paragraphComments.value[paragraphKey(chapterIndex.value, index)] ?? []
+}
+
+const commentDialogOpen = ref(false)
+const commentParagraph = ref(0)
+const commentBusy = ref(false)
+const commentError = ref('')
+
+function openCommentEditor(index: number): void {
+  commentParagraph.value = index
+  commentError.value = ''
+  commentDialogOpen.value = true
+}
+
+async function submitParagraphComment(body: string): Promise<void> {
+  commentBusy.value = true
+  commentError.value = ''
+  try {
+    await postParagraphComment(bookmarkKey.value, chapterIndex.value, commentParagraph.value, body, auth.loggedIn)
+    await loadParagraphComments()
+    commentDialogOpen.value = false
+  } catch (err) {
+    commentError.value = (err as Error).message
+  } finally {
+    commentBusy.value = false
+  }
+}
+
+async function removeParagraphComment(comment: ParagraphComment): Promise<void> {
+  try {
+    await deleteParagraphComment(comment)
+    await loadParagraphComments()
+  } catch (err) {
+    commentError.value = (err as Error).message
+  }
+}
+
+const commentChapterTitle = computed(() => chapter.value?.title ?? '')
+const commentPreview = computed(() => {
+  const text = paragraphs.value[commentParagraph.value] ?? ''
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text
+})
 const contentStyle = computed(() => ({
   fontSize: `${settings.fontSize}px`,
   lineHeight: String(settings.lineHeight),
@@ -416,8 +497,14 @@ watch(bookId, () => {
   void loadBook()
 })
 
+// 切章/切书后拉该章的段落评论
+watch([chapterIndex, bookmarkKey], () => {
+  void loadParagraphComments()
+})
+
 onMounted(() => {
   void loadBook()
+  void loadParagraphComments()
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('resize', onResize)
 })
@@ -481,7 +568,14 @@ onBeforeUnmount(() => {
             <div class="strip" :style="stripStyle(baseStart)">
               <div class="reader-content" :style="contentStyle">
                 <h2>{{ chapter?.title }}</h2>
-                <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph }}</p>
+                <ParagraphLine
+                  v-for="(paragraph, index) in paragraphs"
+                  :key="index"
+                  :text="paragraph"
+                  :comments="commentsFor(index)"
+                  @open-editor="openCommentEditor(index)"
+                  @remove="removeParagraphComment"
+                />
               </div>
             </div>
           </div>
@@ -496,7 +590,14 @@ onBeforeUnmount(() => {
             >
               <div class="reader-content" :style="contentStyle">
                 <h2>{{ chapter?.title }}</h2>
-                <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph }}</p>
+                <ParagraphLine
+                  v-for="(paragraph, index) in paragraphs"
+                  :key="index"
+                  :text="paragraph"
+                  :comments="commentsFor(index)"
+                  @open-editor="openCommentEditor(index)"
+                  @remove="removeParagraphComment"
+                />
               </div>
             </div>
           </div>
@@ -512,7 +613,14 @@ onBeforeUnmount(() => {
             <div class="strip" :style="stripStyle(leafPage)">
               <div class="reader-content" :style="contentStyle">
                 <h2>{{ chapter?.title }}</h2>
-                <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph }}</p>
+                <ParagraphLine
+                  v-for="(paragraph, index) in paragraphs"
+                  :key="index"
+                  :text="paragraph"
+                  :comments="commentsFor(index)"
+                  @open-editor="openCommentEditor(index)"
+                  @remove="removeParagraphComment"
+                />
               </div>
             </div>
           </div>
@@ -536,7 +644,14 @@ onBeforeUnmount(() => {
       <div v-else class="reader-scroll" @click.stop>
         <div class="reader-content" :style="contentStyle">
           <h2>{{ chapter?.title }}</h2>
-          <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph }}</p>
+          <ParagraphLine
+                  v-for="(paragraph, index) in paragraphs"
+                  :key="index"
+                  :text="paragraph"
+                  :comments="commentsFor(index)"
+                  @open-editor="openCommentEditor(index)"
+                  @remove="removeParagraphComment"
+                />
         </div>
       </div>
     </div>
@@ -677,6 +792,19 @@ onBeforeUnmount(() => {
       :ratio="bookmarkRatio"
       @update:open="bookmarkOpen = $event"
       @jump="jumpTo"
+    />
+
+    <ParagraphCommentDialog
+      :open="commentDialogOpen"
+      :chapter-title="commentChapterTitle"
+      :paragraph-preview="commentPreview"
+      :comments="commentsFor(commentParagraph)"
+      :logged-in="auth.loggedIn"
+      :busy="commentBusy"
+      :error="commentError"
+      @submit="submitParagraphComment"
+      @remove="removeParagraphComment"
+      @update:open="commentDialogOpen = $event"
     />
   </div>
 </template>
