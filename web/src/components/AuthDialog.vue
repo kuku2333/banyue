@@ -39,10 +39,14 @@ async function submit(): Promise<void> {
   try {
     if (mode.value === 'login') {
       await auth.login(username.value.trim(), password.value)
+      // 登录成功直接关弹窗，给用户明确反馈
+      emit('update:open', false)
     } else if (mode.value === 'register') {
       await auth.register(username.value.trim(), password.value, displayName.value.trim())
+      // 注册成功留在弹窗里显示恢复码（只显示一次），等用户确认后再关
     } else {
       await auth.recover(username.value.trim(), code.value.trim(), password.value)
+      // 同上：显示新的恢复码
     }
   } catch (err) {
     error.value = (err as Error).message
