@@ -2,18 +2,23 @@
 import { computed, ref } from 'vue'
 import PostCard from '@/components/PostCard.vue'
 import { blogStats, posts, tagStats } from '@/lib/content'
+import { useModerationStore } from '@/stores/moderation'
 import { coverSvg } from '@/lib/cover'
 import { formatDate } from '@/lib/format'
 import { formatCount } from '@/lib/format'
 
-const stats = computed(() => blogStats())
-const tags = computed(() => tagStats().slice(0, 8))
-const featured = computed(() => posts.find((post) => post.featured) ?? posts[0])
+const moderation = useModerationStore()
+const visiblePosts = computed(() => moderation.visible(posts))
+const stats = computed(() => blogStats(visiblePosts.value))
+const tags = computed(() => tagStats(visiblePosts.value).slice(0, 8))
+const featured = computed(() => visiblePosts.value.find((post) => post.featured) ?? visiblePosts.value[0])
 const featuredCover = computed(() => (featured.value ? coverSvg(featured.value.slug) : ''))
 
 const activeTag = ref('全部')
 const filtered = computed(() =>
-  activeTag.value === '全部' ? posts : posts.filter((post) => post.tags.includes(activeTag.value)),
+  activeTag.value === '全部'
+    ? visiblePosts.value
+    : visiblePosts.value.filter((post) => post.tags.includes(activeTag.value)),
 )
 </script>
 

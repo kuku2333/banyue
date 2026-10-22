@@ -14,6 +14,8 @@ export default defineConfig({
     },
   },
   server: {
+    // 同时监听 IPv4/IPv6，避免 localhost 解析到 ::1 时 127.0.0.1 打不开
+    host: true,
     port: 5173,
     strictPort: false,
     proxy: {

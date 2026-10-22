@@ -1,16 +1,34 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import PostCard from '@/components/PostCard.vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useAuthStore } from '@/stores/auth'
+import { useModerationStore } from '@/stores/moderation'
 import { findPost, neighbours, relatedPosts } from '@/lib/content'
 import { formatDate } from '@/lib/format'
 
 const route = useRoute()
+const router = useRouter()
 const settings = useSettingsStore()
+const auth = useAuthStore()
+const moderation = useModerationStore()
 
 const slug = computed(() => String(route.params.slug ?? ''))
 const post = computed(() => findPost(slug.value))
+const isHidden = computed(() => moderation.isHidden(slug.value))
+const canModerate = computed(() => Boolean(auth.user?.isAdmin))
+
+async function toggleHidden(): Promise<void> {
+  if (!canModerate.value) return
+  if (isHidden.value) {
+    await moderation.unhide(slug.value)
+    return
+  }
+  if (!window.confirm('删除这篇文章？它会从所有列表里消失（可恢复）。')) return
+  await moderation.hide(slug.value)
+  await router.push('/')
+}
 const nav = computed(() => neighbours(slug.value))
 const related = computed(() => relatedPosts(slug.value))
 const activeHeading = ref('')
@@ -103,7 +121,7 @@ watch(post, async () => {
 </script>
 
 <template>
-  <div v-if="post" class="shell">
+  <div v-if="post && (!isHidden || canModerate)" class="shell">
     <div class="post-layout">
       <article>
         <header class="post-head">
@@ -126,7 +144,11 @@ watch(post, async () => {
             </button>
             <button type="button" class="tool-btn" @click="backToTop">回到顶部</button>
             <span v-if="restored" class="tool-btn on" style="cursor: default">已回到上次位置</span>
+            <button v-if="canModerate" type="button" class="tool-btn" @click="toggleHidden">
+              {{ isHidden ? '恢复文章' : '删除文章' }}
+            </button>
           </div>
+          <p v-if="isHidden" class="hidden-note">这篇文章已被管理员删除，仅管理员可见。</p>
         </header>
 
         <!-- 正文：仅渲染 markdown-it 白名单输出，原始 HTML 被转义 -->
@@ -184,3 +206,15 @@ watch(post, async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.hidden-note {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  background: rgba(251, 113, 133, 0.08);
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+</style>

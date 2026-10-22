@@ -84,15 +84,33 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind, created_at);
+
+  CREATE TABLE IF NOT EXISTS hidden_posts (
+    slug TEXT PRIMARY KEY,
+    hidden_by TEXT NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    hidden_at INTEGER NOT NULL
+  );
 `)
 
-/* 老库补列：恢复码 */
+/* 老库补列：恢复码 / 管理员 */
 const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map((column) => column.name))
 if (!userColumns.has('recovery_hash')) {
   db.exec('ALTER TABLE users ADD COLUMN recovery_hash TEXT')
 }
 if (!userColumns.has('recovery_salt')) {
   db.exec('ALTER TABLE users ADD COLUMN recovery_salt TEXT')
+}
+if (!userColumns.has('is_admin')) {
+  db.exec('ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0')
+}
+
+/* 环境变量里列出的用户名自动成为管理员 */
+const admins = (process.env.BANYUE_ADMINS ?? '')
+  .split(',')
+  .map((name) => name.trim().toLowerCase())
+  .filter(Boolean)
+for (const username of admins) {
+  db.prepare('UPDATE users SET is_admin = 1 WHERE username = ?').run(username)
 }
 
 export function rows(sql, params = []) {

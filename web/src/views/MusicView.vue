@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { usePlayerStore } from '@/stores/player'
+import { useAuthStore } from '@/stores/auth'
 import { REGIONS, fetchTopSongs, fingerprint, formatTime, isAudioFile, searchSongs, type Region, type Track } from '@/lib/music'
 import { addTrack, deleteTrack, findTrackByHash, getTrackBlob, listTracks, type TrackRecord } from '@/lib/db'
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
@@ -10,6 +11,7 @@ import { formatCount } from '@/lib/format'
 type Tab = 'charts' | 'search' | 'local' | 'cloud' | 'favs' | 'bili' | 'douyin'
 
 const player = usePlayerStore()
+const auth = useAuthStore()
 const tab = ref<Tab>('charts')
 const region = ref<Region['id']>('hk')
 const charts = ref<Track[]>([])
@@ -411,7 +413,14 @@ onMounted(() => {
           <button type="button" class="play" @click="playFrom(cloudList, index)">
             {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
           </button>
-          <button v-if="cloudTracks[index]?.mine" type="button" class="del" @click="removeCloud(cloudTracks[index]!)">删除</button>
+          <button
+            v-if="cloudTracks[index]?.mine || auth.user?.isAdmin"
+            type="button"
+            class="del"
+            @click="removeCloud(cloudTracks[index]!)"
+          >
+            删除
+          </button>
         </li>
       </ol>
       <p v-else class="empty">云端还没有音乐。把「本地音乐」里的歌传到云端，别人也能听。</p>

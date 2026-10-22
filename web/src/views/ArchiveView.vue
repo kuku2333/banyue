@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { archiveGroups, posts } from '@/lib/content'
+import { useModerationStore } from '@/stores/moderation'
 import { formatMonth } from '@/lib/format'
 
-const groups = computed(() => archiveGroups())
-const total = computed(() => posts.length)
+const moderation = useModerationStore()
+const visible = computed(() => moderation.visible(posts))
+const groups = computed(() => archiveGroups(visible.value))
+const total = computed(() => visible.value.length)
 </script>
 
 <template>

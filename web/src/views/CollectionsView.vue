@@ -170,7 +170,14 @@ onMounted(async () => {
             </p>
           </div>
           <div class="detail-actions">
-            <button v-if="detail.mine" type="button" class="btn tiny danger" @click="removeCollection">删除收藏夹</button>
+            <button
+              v-if="detail.mine || auth.user?.isAdmin"
+              type="button"
+              class="btn tiny danger"
+              @click="removeCollection"
+            >
+              删除收藏夹
+            </button>
             <button type="button" class="btn tiny" @click="detail = null">关闭</button>
           </div>
         </header>
@@ -183,7 +190,14 @@ onMounted(async () => {
               <b>{{ item.title }}</b>
               <span v-if="item.subtitle">{{ item.subtitle }}</span>
             </div>
-            <button v-if="detail.mine" type="button" class="remove" @click="removeItem(item)">移除</button>
+            <button
+              v-if="detail.mine || auth.user?.isAdmin"
+              type="button"
+              class="remove"
+              @click="removeItem(item)"
+            >
+              移除
+            </button>
           </li>
         </ol>
         <p v-else class="empty small">这个收藏夹还是空的。</p>

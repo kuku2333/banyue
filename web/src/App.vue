@@ -8,9 +8,11 @@ import SearchOverlay from '@/components/SearchOverlay.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
 import AuthDialog from '@/components/AuthDialog.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useModerationStore } from '@/stores/moderation'
 
 const route = useRoute()
 const auth = useAuthStore()
+const moderation = useModerationStore()
 const searchOpen = ref(false)
 const progress = ref(0)
 
@@ -33,6 +35,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKeydown)
   onScroll()
   void auth.ensure()
+  void moderation.load()
 })
 
 onUnmounted(() => {

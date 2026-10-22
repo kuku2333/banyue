@@ -29,7 +29,7 @@ async function call(path, { method = 'GET', body, cookie } = {}) {
 
 before(async () => {
   server = spawn(process.execPath, ['src/index.mjs'], {
-    env: { ...process.env, PORT: String(PORT), BANYUE_DB: join(dir, 'test.db'), BANYUE_QUOTA_MB: '2' },
+    env: { ...process.env, PORT: String(PORT), BANYUE_DB: join(dir, 'test.db'), BANYUE_QUOTA_MB: '2', BANYUE_ADMINS: 'alice' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   await new Promise((resolve, reject) => {
@@ -272,4 +272,43 @@ test('云端文件：登录上传、公开列表、原样下载、只有作者�
   assert.equal(removed.status, 200)
   const gone = await fetch(`${BASE}/api/assets/${id}/file`)
   assert.equal(gone.status, 404)
+})
+
+test('管理员：能删别人的文件、能隐藏文章', async () => {
+  const admin = await call('/api/auth/login', { method: 'POST', body: alice })
+  const member = await call('/api/auth/register', {
+    method: 'POST',
+    body: { username: 'frank', password: 'secret123', displayName: '弗兰克' },
+  })
+
+  const uploaded = await fetch(`${BASE}/api/assets?kind=book`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', 'x-title': encodeURIComponent('管理员的书'), cookie: admin.cookie },
+    body: '管理员上传的一本书',
+  })
+  assert.equal(uploaded.status, 201)
+  const assetId = (await uploaded.json()).id
+
+  // 普通会员删不掉别人的东西；管理员可以
+  const memberDenied = await call(`/api/assets/${assetId}`, { method: 'DELETE', cookie: member.cookie })
+  assert.equal(memberDenied.status, 403)
+  const adminRemoved = await call(`/api/assets/${assetId}`, { method: 'DELETE', cookie: admin.cookie })
+  assert.equal(adminRemoved.status, 200)
+
+  // 隐藏文章：会员 403，管理员可以，列表公开可读
+  const denied = await call('/api/posts/digital-minimalism/hide', { method: 'POST', cookie: member.cookie })
+  assert.equal(denied.status, 403)
+  const hidden = await call('/api/posts/digital-minimalism/hide', { method: 'POST', cookie: admin.cookie })
+  assert.equal(hidden.status, 200)
+
+  const list = await call('/api/hidden-posts')
+  assert.deepEqual(
+    list.body.posts.map((item) => item.slug),
+    ['digital-minimalism'],
+  )
+
+  const restored = await call('/api/posts/digital-minimalism/hide', { method: 'DELETE', cookie: admin.cookie })
+  assert.equal(restored.status, 200)
+  const empty = await call('/api/hidden-posts')
+  assert.equal(empty.body.posts.length, 0)
 })

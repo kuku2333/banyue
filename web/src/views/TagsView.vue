@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { posts, tagStats } from '@/lib/content'
+import { useModerationStore } from '@/stores/moderation'
 
-const tags = computed(() => tagStats())
-const total = computed(() => posts.length)
+const moderation = useModerationStore()
+const visible = computed(() => moderation.visible(posts))
+const tags = computed(() => tagStats(visible.value))
+const total = computed(() => visible.value.length)
 </script>
 
 <template>

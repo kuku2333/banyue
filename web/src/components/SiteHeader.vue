@@ -63,6 +63,7 @@ const isActive = (link: NavLink): boolean => link.names.includes(activeName.valu
       <RouterLink v-if="auth.loggedIn" class="user-chip" to="/collections" :title="`@${auth.user?.username}`">
         <span class="avatar">{{ auth.user?.displayName?.slice(0, 1) ?? '·' }}</span>
         <b>{{ auth.user?.displayName ?? auth.user?.username }}</b>
+        <span v-if="auth.user?.isAdmin" class="admin-badge">管理员</span>
       </RouterLink>
       <button v-else class="login-btn" type="button" @click="auth.openDialog()">登录</button>
     </div>
@@ -104,6 +105,16 @@ const isActive = (link: NavLink): boolean => link.names.includes(activeName.valu
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.admin-badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+  font-size: 0.66rem;
+  line-height: 1.4;
 }
 
 .login-btn {

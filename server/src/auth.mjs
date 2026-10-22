@@ -4,6 +4,14 @@ import { row, run } from './db.mjs'
 const SESSION_DAYS = 30
 const COOKIE = 'banyue_sid'
 
+/** 环境变量里列出的用户名始终算管理员（便于自建部署和测试） */
+const ENV_ADMINS = new Set(
+  (process.env.BANYUE_ADMINS ?? '')
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean),
+)
+
 export function hashPassword(password, salt = randomBytes(16).toString('hex')) {
   const hash = scryptSync(password, salt, 64).toString('hex')
   return { hash, salt }
@@ -36,8 +44,13 @@ export function userFromRequest(req) {
     destroySession(sid)
     return null
   }
-  const user = row('SELECT id, username, display_name FROM users WHERE id = ?', [session.user_id])
-  return user ? { ...user, sessionId: sid } : null
+  const user = row('SELECT id, username, display_name, is_admin FROM users WHERE id = ?', [session.user_id])
+  if (!user) return null
+  return {
+    ...user,
+    is_admin: Number(user.is_admin) === 1 || ENV_ADMINS.has(String(user.username).toLowerCase()),
+    sessionId: sid,
+  }
 }
 
 export function sessionCookie(sessionId, maxAgeSeconds) {

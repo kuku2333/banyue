@@ -52,20 +52,37 @@ BANYUE_DB=/path/db.sqlite node src/index.mjs
 | GET | `/api/assets?kind=book\|track` | 云端文件列表（公开，带上传者） |
 | POST | `/api/assets?kind=book\|track` | 需登录：原始字节 + 头 `x-title` / `x-subtitle` / `x-filename` |
 | GET | `/api/assets/:id/file` | 下载 / 流式播放，支持 Range |
-| DELETE | `/api/assets/:id` | 只有上传者 |
+| DELETE | `/api/assets/:id` | 只有上传者（管理员可删任意） |
 | POST | `/api/auth/recover` | 恢复码重置密码：`{username, code, password}` |
 | POST | `/api/auth/recovery-code` | 登录后重新生成恢复码 |
+| GET | `/api/hidden-posts` | 被管理员隐藏的文章 slug 列表（公开） |
+| POST | `/api/posts/:slug/hide` | 需管理员：隐藏文章 |
+| DELETE | `/api/posts/:slug/hide` | 需管理员：恢复文章 |
 
-上传体积上限：书 20MB、音乐 40MB；**每个账号默认总共 200MB**（`BANYUE_QUOTA_MB` 可调），
+上传体积上限：书 50MB、音乐 40MB；**每个账号默认总共 200MB**（`BANYUE_QUOTA_MB` 可调），
 超出返回 413 并提示剩余空间。文件落在 `server/data/files/`，数据库只存元信息；
 `GET /api/storage` 返回当前账号的 `{ used, quota }`。
+
+## 管理员
+
+```bash
+node scripts/grant-admin.mjs <username>          # 设为管理员
+node scripts/grant-admin.mjs <username> --revoke  # 取消
+# 或者启动时：BANYUE_ADMINS=alice,bob node src/index.mjs
+```
+
+- 权限：删除任意云端文件、收藏夹、书签、评论；隐藏/恢复文章。
+- 文章是静态文件，「删除」= 服务端写一条 `hidden_posts`，前端据此过滤，可恢复。
+- 前端表现：头部用户名旁「管理员」徽章；文章页出现「删除文章 / 恢复文章」；
+  云端列表、评论、书签的删除按钮对管理员开放。
+- 隐藏列表由 `GET /api/hidden-posts` 公开返回，所以访客也不会看到被删文章。
 
 ## 安全边界
 
 - 密码用 `scrypt`（N=16384）加盐存储，不存明文；
 - 会话是随机 24 字节令牌，Cookie 为 `HttpOnly; SameSite=Lax`，不暴露给前端 JS；
 - 写操作全部校验登录态与归属（别人的收藏夹返回 403）；
-- 请求体上限 64KB（JSON），上传另按类型限 20MB / 40MB；
+- 请求体上限 64KB（JSON），上传另按类型限 50MB / 40MB，缺 `Content-Length` 时边写边计数；
 - 同一个用户的自建部署里没有第三方登录、没有邮箱；
 - **恢复码**在注册时显示一次（形如 `ABCD-EFGH-JKLM-NPQR`），只存 scrypt 哈希；
   忘记密码时用「用户名 + 恢复码 + 新密码」重置，成功后恢复码轮换、所有旧会话作废。

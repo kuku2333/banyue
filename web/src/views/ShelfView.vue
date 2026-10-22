@@ -311,7 +311,9 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
         <button type="button" class="cloud-btn" :disabled="cloudBusy === asset.id" @click="downloadBook(asset)">
           {{ cloudBusy === asset.id ? '下载中…' : '下载到书架' }}
         </button>
-        <button v-if="asset.mine" type="button" class="cloud-del" @click="removeCloud(asset)">删除</button>
+        <button v-if="asset.mine || auth.user?.isAdmin" type="button" class="cloud-del" @click="removeCloud(asset)">
+          删除
+        </button>
       </li>
     </ul>
 

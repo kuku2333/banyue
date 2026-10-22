@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 import { existsSync, createReadStream, createWriteStream, mkdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
 import { extname, join, normalize, resolve, dirname } from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import { Transform } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { row, rows, run } from './db.mjs'
 import {
@@ -24,7 +25,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DIST = resolve(ROOT, '../web/dist')
 const FILES_DIR = resolve(ROOT, 'data/files')
 const MAX_BODY = 64 * 1024
-const UPLOAD_LIMITS = { book: 20 * 1024 * 1024, track: 40 * 1024 * 1024 }
+const UPLOAD_LIMITS = { book: 50 * 1024 * 1024, track: 40 * 1024 * 1024 }
 /** 每个账号的云端总容量（MB），默认 200 */
 const QUOTA_BYTES = Math.max(1, Number(process.env.BANYUE_QUOTA_MB ?? 200)) * 1024 * 1024
 
@@ -77,12 +78,31 @@ async function readBody(req) {
   }
 }
 
-const publicUser = (user) => ({ id: user.id, username: user.username, displayName: user.display_name })
+const publicUser = (user) => ({
+  id: user.id,
+  username: user.username,
+  displayName: user.display_name ?? user.displayName,
+  isAdmin: Number(user.is_admin) === 1,
+})
+
+function canManage(user, ownerId) {
+  return Boolean(user) && (user.is_admin || user.id === ownerId)
+}
 
 function requireUser(req, res) {
   const user = userFromRequest(req)
   if (!user) {
     fail(res, 401, '需要登录')
+    return null
+  }
+  return user
+}
+
+function requireAdmin(req, res) {
+  const user = requireUser(req, res)
+  if (!user) return null
+  if (!user.is_admin) {
+    fail(res, 403, '需要管理员权限')
     return null
   }
   return user
@@ -264,7 +284,7 @@ route('DELETE', '/api/collections/:id', async (req, res, params) => {
   if (!user) return
   const collection = row('SELECT owner_id FROM collections WHERE id = ?', [params.id])
   if (!collection) return fail(res, 404, '收藏夹不存在')
-  if (collection.owner_id !== user.id) return fail(res, 403, '只能删自己的收藏夹')
+  if (!canManage(user, collection.owner_id)) return fail(res, 403, '没有权限')
   run('DELETE FROM collections WHERE id = ?', [params.id])
   send(res, 200, { ok: true })
 })
@@ -274,7 +294,7 @@ route('POST', '/api/collections/:id/items', async (req, res, params) => {
   if (!user) return
   const collection = row('SELECT owner_id FROM collections WHERE id = ?', [params.id])
   if (!collection) return fail(res, 404, '收藏夹不存在')
-  if (collection.owner_id !== user.id) return fail(res, 403, '只能往自己的收藏夹里加')
+  if (!canManage(user, collection.owner_id)) return fail(res, 403, '只能往自己的收藏夹里加')
   const body = await readBody(req)
   const key = String(body.key ?? '').trim()
   const title = String(body.title ?? '').trim()
@@ -292,7 +312,7 @@ route('DELETE', '/api/collections/:id/items/:itemId', async (req, res, params) =
   if (!user) return
   const collection = row('SELECT owner_id FROM collections WHERE id = ?', [params.id])
   if (!collection) return fail(res, 404, '收藏夹不存在')
-  if (collection.owner_id !== user.id) return fail(res, 403, '只能改自己的收藏夹')
+  if (!canManage(user, collection.owner_id)) return fail(res, 403, '只能改自己的收藏夹')
   run('DELETE FROM collection_items WHERE id = ? AND collection_id = ?', [params.itemId, params.id])
   send(res, 200, { ok: true })
 })
@@ -343,7 +363,7 @@ route('DELETE', '/api/bookmarks/:id', async (req, res, params) => {
   if (!user) return
   const bookmark = row('SELECT user_id FROM bookmarks WHERE id = ?', [params.id])
   if (!bookmark) return fail(res, 404, '书签不存在')
-  if (bookmark.user_id !== user.id) return fail(res, 403, '只能删自己的书签')
+  if (!canManage(user, bookmark.user_id)) return fail(res, 403, '只能删自己的书签')
   run('DELETE FROM bookmarks WHERE id = ?', [params.id])
   send(res, 200, { ok: true })
 })
@@ -392,7 +412,7 @@ route('DELETE', '/api/songs/:key/comments/:id', async (req, res, params) => {
   if (!user) return
   const comment = row('SELECT user_id FROM song_comments WHERE id = ? AND song_key = ?', [params.id, params.key])
   if (!comment) return fail(res, 404, '评论不存在')
-  if (comment.user_id !== user.id) return fail(res, 403, '只能删自己的评论')
+  if (!canManage(user, comment.user_id)) return fail(res, 403, '只能删自己的评论')
   run('DELETE FROM song_comments WHERE id = ?', [params.id])
   send(res, 200, { ok: true })
 })
@@ -447,14 +467,13 @@ route('POST', '/api/assets', async (req, res, _params, url) => {
   if (!user) return
   const kind = url.searchParams.get('kind')
   if (kind !== 'book' && kind !== 'track') return fail(res, 400, 'kind 只能是 book 或 track')
-  const size = Number(req.headers['content-length'] ?? 0)
-  if (!size) return fail(res, 400, '缺少文件内容')
-  if (size > UPLOAD_LIMITS[kind]) {
-    return fail(res, 413, `文件超过上限（${kind === 'book' ? '20MB' : '40MB'}）`)
+  const declared = Number(req.headers['content-length'] ?? 0)
+  if (declared && declared > UPLOAD_LIMITS[kind]) {
+    return fail(res, 413, `文件超过上限（${kind === 'book' ? '50MB' : '40MB'}）`)
   }
 
   const used = storageUsed(user.id)
-  if (used + size > QUOTA_BYTES) {
+  if (declared && used + declared > QUOTA_BYTES) {
     const left = Math.max(0, QUOTA_BYTES - used)
     return fail(
       res,
@@ -473,24 +492,42 @@ route('POST', '/api/assets', async (req, res, _params, url) => {
   const storedName = `${id}${ext}`
   const temp = join(FILES_DIR, `${storedName}.part`)
   const target = join(FILES_DIR, storedName)
+  const maxBytes = Math.max(1, Math.min(UPLOAD_LIMITS[kind], QUOTA_BYTES - used))
+  let written = 0
 
   try {
-    await pipeline(req, createWriteStream(temp))
+    // 有的客户端不带 Content-Length，边写边计数，超限立刻中断
+    const limiter = new Transform({
+      transform(chunk, _encoding, callback) {
+        written += chunk.length
+        if (written > maxBytes) {
+          callback(new Error('TOO_LARGE'))
+          return
+        }
+        callback(null, chunk)
+      },
+    })
+    await pipeline(req, limiter, createWriteStream(temp))
+    if (written === 0) {
+      unlinkSync(temp)
+      return fail(res, 400, '文件是空的')
+    }
     renameSync(temp, target)
-  } catch {
+  } catch (error) {
     try {
       unlinkSync(temp)
     } catch {
-      // ignore
+      // 临时文件可能还没建出来
     }
-    return fail(res, 400, '写入文件失败')
+    console.warn('[upload] failed', { kind, declared, written, reason: error.message })
+    return fail(res, 413, '文件超过可用空间或大小上限')
   }
 
   run(
     'INSERT INTO assets (id, owner_id, kind, title, subtitle, size, mime, stored_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, user.id, kind, title, subtitle, size, mime, storedName, Date.now()],
+    [id, user.id, kind, title, subtitle, written, mime, storedName, Date.now()],
   )
-  send(res, 201, { id })
+  send(res, 201, { id, size: written })
 })
 
 route('GET', '/api/assets/:id/file', async (req, res, params) => {
@@ -530,13 +567,38 @@ route('DELETE', '/api/assets/:id', async (req, res, params) => {
   if (!user) return
   const asset = row('SELECT owner_id, stored_name FROM assets WHERE id = ?', [params.id])
   if (!asset) return fail(res, 404, '文件不存在')
-  if (asset.owner_id !== user.id) return fail(res, 403, '只能删自己上传的文件')
+  if (!canManage(user, asset.owner_id)) return fail(res, 403, '只能删自己上传的文件')
   run('DELETE FROM assets WHERE id = ?', [params.id])
   try {
     unlinkSync(join(FILES_DIR, asset.stored_name))
   } catch {
     // 文件可能已不在
   }
+  send(res, 200, { ok: true })
+})
+
+/* 文章隐藏（管理员） */
+
+route('GET', '/api/hidden-posts', async (_req, res) => {
+  const list = rows('SELECT slug, hidden_at FROM hidden_posts ORDER BY hidden_at DESC')
+  send(res, 200, { posts: list.map((item) => ({ slug: item.slug, hiddenAt: item.hidden_at })) })
+})
+
+route('POST', '/api/posts/:slug/hide', async (req, res, params) => {
+  const admin = requireAdmin(req, res)
+  if (!admin) return
+  run('INSERT OR REPLACE INTO hidden_posts (slug, hidden_by, hidden_at) VALUES (?, ?, ?)', [
+    params.slug.slice(0, 200),
+    admin.id,
+    Date.now(),
+  ])
+  send(res, 200, { ok: true })
+})
+
+route('DELETE', '/api/posts/:slug/hide', async (req, res, params) => {
+  const admin = requireAdmin(req, res)
+  if (!admin) return
+  run('DELETE FROM hidden_posts WHERE slug = ?', [params.slug])
   send(res, 200, { ok: true })
 })
 

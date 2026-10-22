@@ -181,7 +181,7 @@ async function remove(row: Row): Promise<void> {
           <div class="meta">
             <span class="who">{{ row.owner }}</span>
             <span v-if="row.local" class="tag">仅本机</span>
-            <button v-if="row.mine" type="button" class="del" @click="remove(row)">删除</button>
+            <button v-if="row.mine || auth.user?.isAdmin" type="button" class="del" @click="remove(row)">删除</button>
           </div>
         </li>
       </ol>
