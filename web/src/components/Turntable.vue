@@ -23,14 +23,6 @@ const labelStyle = computed(() => ({
     hsl(${labelHue.value} 62% 46%))`,
 }))
 const initial = computed(() => (current.value?.title ?? '空').slice(0, 1))
-
-const pct = computed(() => `${Math.round(player.progress * 100)}%`)
-
-function onSeek(event: MouseEvent): void {
-  const el = event.currentTarget as HTMLElement
-  const rect = el.getBoundingClientRect()
-  player.seek((event.clientX - rect.left) / rect.width)
-}
 </script>
 
 <template>
@@ -55,29 +47,12 @@ function onSeek(event: MouseEvent): void {
       </div>
     </div>
 
-    <!-- 信息与控制 -->
+    <!-- 信息（播放控制交给悬浮播放器，这里不重复） -->
     <div class="tt-info">
       <span class="tt-now">{{ current ? (player.playing ? '正在播放' : '已暂停') : '唱机待命' }}</span>
       <h3 class="tt-title">{{ current?.title ?? '点一张唱片放上来' }}</h3>
-      <p class="tt-artist">{{ current?.artist ?? '列表里的任意一张都行' }}</p>
-
-      <div class="tt-progress" @click="onSeek">
-        <i :style="{ width: pct }" />
-      </div>
-      <div class="tt-times">
-        <span>{{ Math.round(player.currentTime) }}s</span>
-        <span>{{ Math.round(player.duration) }}s</span>
-      </div>
-
+      <p class="tt-artist">{{ current?.artist ?? '唱片墙上的任意一张都行' }}</p>
       <p v-if="player.error" class="tt-error">{{ player.error }}</p>
-
-      <div class="tt-ctrl">
-        <button type="button" class="tt-btn" aria-label="上一首" @click="player.shift(-1)">‹‹</button>
-        <button type="button" class="tt-btn main" :aria-label="player.playing ? '暂停' : '播放'" @click="player.toggle()">
-          {{ player.playing ? '❚❚' : '▶' }}
-        </button>
-        <button type="button" class="tt-btn" aria-label="下一首" @click="player.shift(1)">››</button>
-      </div>
     </div>
   </div>
 </template>
@@ -262,62 +237,10 @@ function onSeek(event: MouseEvent): void {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tt-progress {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.09);
-  overflow: hidden;
-  cursor: pointer;
-}
-.tt-progress i {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #4cc2ff, #7a6cff);
-}
-.tt-times {
-  display: flex;
-  justify-content: space-between;
-  margin: 4px 0 12px;
-  opacity: 0.55;
-  font-size: 0.72rem;
-}
 .tt-error {
   margin: 0 0 10px;
   color: #ff7b72;
   font-size: 0.8rem;
-}
-.tt-ctrl {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-.tt-btn {
-  min-width: 42px;
-  padding: 8px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  color: #e7edf2;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition:
-    transform 0.12s ease,
-    background 0.15s ease;
-}
-.tt-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  transform: translateY(-1px);
-}
-.tt-btn.main {
-  min-width: 58px;
-  background: #4cc2ff;
-  border-color: transparent;
-  color: #06222e;
-  font-weight: 700;
-}
-.tt-btn.main:hover {
-  background: #6fd0ff;
 }
 
 @media (max-width: 767px) {
@@ -329,9 +252,6 @@ function onSeek(event: MouseEvent): void {
   .tt-info {
     width: 100%;
     text-align: center;
-  }
-  .tt-ctrl {
-    justify-content: center;
   }
 }
 </style>
