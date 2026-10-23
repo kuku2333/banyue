@@ -66,15 +66,16 @@ function onTouchEnd(): void {
   gap: 3px;
   margin: 2px 0 6px;
   padding: 1px 8px;
-  border: 1px solid color-mix(in oklab, var(--accent, #38bdf8) 40%, transparent);
+  border: 1px solid #2f5266;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--accent, #38bdf8) 10%, transparent);
-  color: var(--accent, #38bdf8);
+  /* 固定实色：任何阅读主题下都清晰 */
+  background: #16222c;
+  color: #4cc2ff;
   font-size: 0.72em;
   cursor: pointer;
 }
 .p-cmt-count:hover {
-  background: color-mix(in oklab, var(--accent, #38bdf8) 22%, transparent);
+  background: #22323f;
 }
 .p-cmt-count svg {
   width: 11px;

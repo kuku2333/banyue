@@ -102,17 +102,19 @@ function submit(): Promise<void> | void {
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(4, 8, 14, 0.62);
+  background: rgba(5, 8, 12, 0.72);
 }
 .auth-box {
   width: min(420px, 100%);
   max-height: min(78vh, 640px);
   overflow: auto;
   padding: 18px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid #2b3642;
   border-radius: 14px;
-  background: var(--bg-2);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  /* 固定实色面板：不跟随阅读器主题，保证评论始终清晰 */
+  background: #141b23;
+  color: #e7edf2;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
 }
 .auth-box header {
   display: flex;
@@ -154,8 +156,8 @@ function submit(): Promise<void> | void {
 }
 .cmt-list li {
   padding: 8px 10px;
-  border-left: 2px solid color-mix(in oklab, var(--accent, #38bdf8) 55%, transparent);
-  background: color-mix(in oklab, var(--accent, #38bdf8) 6%, transparent);
+  border-left: 2px solid #38bdf8;
+  background: #1d2630;
   border-radius: 6px;
 }
 .cmt-list li + li {
@@ -191,16 +193,16 @@ function submit(): Promise<void> | void {
 .form textarea {
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid #2b3642;
   border-radius: 8px;
-  background: var(--bg);
-  color: inherit;
+  background: #0d1319;
+  color: #e7edf2;
   font: inherit;
   font-size: 0.88rem;
   resize: vertical;
 }
 .form textarea:focus {
-  outline: 2px solid color-mix(in oklab, var(--accent, #38bdf8) 55%, transparent);
+  outline: 2px solid #38bdf8;
 }
 .submit {
   width: 100%;
@@ -208,8 +210,8 @@ function submit(): Promise<void> | void {
   padding: 9px;
   border: none;
   border-radius: 8px;
-  background: var(--accent, #38bdf8);
-  color: #04121e;
+  background: #4cc2ff;
+  color: #06222e;
   font-weight: 600;
   cursor: pointer;
 }
