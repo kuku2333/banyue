@@ -206,44 +206,58 @@ function onTap(): void {
   background: radial-gradient(circle at 35% 30%, #e8e8e8, #7c7c7c 70%);
 }
 
-/* ---------- 唱臂 ---------- */
+/* ---------- 唱臂：硬盘磁头（楔形金属臂 + 读写头） ---------- */
 .tt-arm {
   position: absolute;
-  right: 14px;
-  top: 18px;
-  width: 12px;
-  height: 12px;
+  right: 10px;
+  top: 12px;
+  width: 14px;
+  height: 14px;
   transform-origin: 50% 50%;
-  transform: rotate(-30deg);
-  transition: transform 0.55s cubic-bezier(0.25, 1.3, 0.45, 1);
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+  transform: rotate(-32deg);
+  transition: transform 0.55s cubic-bezier(0.25, 1.25, 0.45, 1);
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.6));
 }
 .tt-arm.on {
-  transform: rotate(15deg);
+  transform: rotate(16deg);
 }
 
-/* 转轴：金属底座 + 发光环 */
+/* 转轴：硬盘的 pivot 轴承 */
 .tt-arm-base {
   position: absolute;
-  right: -10px;
-  top: -10px;
-  width: 30px;
-  height: 30px;
+  right: -11px;
+  top: -11px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 34% 28%, #f2f6f9 0 12%, #aab3bd 34%, #4b525c 72%, #20252b 100%);
+    radial-gradient(circle at 36% 30%, #f6f9fb 0 10%, #c3ccd5 26%, #7d8791 52%, #333a42 80%, #171b20 100%);
   box-shadow:
-    0 3px 10px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+    0 4px 12px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.28),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.5);
+}
+/* 转轴中心的螺丝孔 */
+.tt-arm-base::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #2b323a, #0a0d10);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.18);
 }
 .tt-arm-ring {
   position: absolute;
-  inset: -5px;
+  inset: -6px;
   border-radius: 50%;
-  border: 1px solid rgba(76, 194, 255, 0.55);
+  border: 1px solid rgba(76, 194, 255, 0.5);
   box-shadow:
-    0 0 10px rgba(76, 194, 255, 0.5),
-    inset 0 0 8px rgba(76, 194, 255, 0.35);
+    0 0 10px rgba(76, 194, 255, 0.45),
+    inset 0 0 8px rgba(76, 194, 255, 0.3);
 }
 .spinning .tt-arm-ring {
   animation: tt-ring-pulse 2.4s ease-in-out infinite;
@@ -251,37 +265,36 @@ function onTap(): void {
 @keyframes tt-ring-pulse {
   0%,
   100% {
-    opacity: 0.45;
-    box-shadow: 0 0 8px rgba(76, 194, 255, 0.35);
+    opacity: 0.4;
+    box-shadow: 0 0 8px rgba(76, 194, 255, 0.3);
   }
   50% {
     opacity: 1;
-    box-shadow: 0 0 16px rgba(76, 194, 255, 0.75);
+    box-shadow: 0 0 18px rgba(76, 194, 255, 0.8);
   }
 }
 
-/* 臂杆：碳纤维 + 边缘蓝光 */
+/* 臂杆：楔形金属臂（磁头悬臂），上宽下窄 */
 .tt-arm-rod {
   position: absolute;
-  right: 3px;
-  top: 2px;
-  width: 7px;
-  height: 120px;
-  border-radius: 4px;
-  background:
-    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 5px),
-    linear-gradient(90deg, #3b424b, #10141a 55%, #2b323a);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
-    0 1px 4px rgba(0, 0, 0, 0.6);
+  right: -1px;
+  top: 0;
+  width: 13px;
+  height: 124px;
+  background: linear-gradient(100deg, #e8eef4 0%, #aab4bf 22%, #6f7a85 55%, #b9c3cd 78%, #5c656f 100%);
+  clip-path: polygon(46% 0%, 54% 0%, 100% 88%, 100% 100%, 0% 100%, 0% 88%);
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.28);
 }
+/* 悬臂上的高光条 */
 .tt-arm-glow {
   position: absolute;
-  inset: 0 auto 0 0;
+  left: 50%;
+  top: 6px;
   width: 2px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, transparent, #4cc2ff 20%, #7a6cff 80%, transparent);
-  opacity: 0.75;
+  height: 100px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(124, 196, 255, 0.55) 45%, transparent 92%);
+  opacity: 0.55;
 }
 .spinning .tt-arm-glow {
   animation: tt-glow-run 2.2s ease-in-out infinite;
@@ -289,47 +302,62 @@ function onTap(): void {
 @keyframes tt-glow-run {
   0%,
   100% {
-    opacity: 0.35;
+    opacity: 0.25;
   }
   50% {
-    opacity: 1;
+    opacity: 0.9;
   }
 }
 
-/* 唱头：发光的「针」 */
+/* 读写头：末端的方块（slider + head） */
 .tt-arm-head {
   position: absolute;
-  right: 0;
+  right: -4px;
   top: 118px;
-  width: 14px;
-  height: 22px;
-  border-radius: 4px;
-  background: linear-gradient(160deg, #2a3038, #0b0e12 70%);
+  width: 21px;
+  height: 16px;
+  border-radius: 3px;
+  background: linear-gradient(165deg, #2f363f 0%, #12161b 55%, #05070a 100%);
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.6),
-    inset 0 0 0 1px rgba(124, 196, 255, 0.28);
+    0 2px 9px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(150, 200, 240, 0.22),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.6);
 }
+/* 读写头上的感应点 */
+.tt-arm-head::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 34%, #d8f1ff, #4cc2ff 55%, #0d5f8a);
+  box-shadow: 0 0 8px rgba(76, 194, 255, 0.9);
+}
+/* 磁针（贴近盘面的极细针脚） */
 .tt-needle {
   position: absolute;
   left: 50%;
-  bottom: -7px;
-  width: 2px;
-  height: 9px;
+  bottom: -6px;
+  width: 1.5px;
+  height: 8px;
   transform: translateX(-50%);
   border-radius: 1px;
-  background: linear-gradient(180deg, #9fd8ff, #4cc2ff 60%, transparent);
-  box-shadow: 0 0 8px rgba(76, 194, 255, 0.85);
+  background: linear-gradient(180deg, #cfe9ff, #4cc2ff 55%, rgba(76, 194, 255, 0.1));
+  box-shadow: 0 0 7px rgba(76, 194, 255, 0.85);
 }
 .spinning .tt-needle {
-  animation: tt-needle-glow 1.8s ease-in-out infinite;
+  animation: tt-needle-glow 1.6s ease-in-out infinite;
 }
 @keyframes tt-needle-glow {
   0%,
   100% {
-    box-shadow: 0 0 6px rgba(76, 194, 255, 0.6);
+    box-shadow: 0 0 5px rgba(76, 194, 255, 0.55);
   }
   50% {
-    box-shadow: 0 0 14px rgba(124, 196, 255, 1);
+    box-shadow: 0 0 15px rgba(150, 220, 255, 1);
   }
 }
 

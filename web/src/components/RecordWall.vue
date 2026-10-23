@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import type { Track } from '@/lib/music'
 
 /** 唱片墙：一张张圆唱片排好，唱片上写歌名，悬停放大名字，点击放上唱片机 */
@@ -16,6 +17,30 @@ const emit = defineEmits<{
   play: [index: number]
   select: [id: string]
 }>()
+
+/* 分页：每行 5 张 × 4 行 = 20 张/页，免得一直滑 */
+const PAGE_SIZE = 20
+const page = ref(0)
+const pageCount = computed(() => Math.max(1, Math.ceil(props.tracks.length / PAGE_SIZE)))
+/** 当前页的数据（带全局索引，点击播放要用原始 index） */
+const pageTracks = computed(() =>
+  props.tracks.slice(page.value * PAGE_SIZE, page.value * PAGE_SIZE + PAGE_SIZE).map((track, i) => ({
+    track,
+    index: page.value * PAGE_SIZE + i,
+  })),
+)
+
+function gotoPage(next: number): void {
+  page.value = Math.min(Math.max(0, next), pageCount.value - 1)
+}
+
+// 换列表（换地区/换 tab）时回到第一页
+watch(
+  () => props.tracks,
+  () => {
+    page.value = 0
+  },
+)
 
 function hueOf(text: string): number {
   let hash = 0
@@ -52,7 +77,7 @@ const isCurrent = (track: Track): boolean => props.currentId === track.id
 <template>
   <div class="record-wall" :class="{ 'select-mode': props.selectMode }">
     <div
-      v-for="(track, index) in props.tracks"
+      v-for="{ track, index } in pageTracks"
       :key="track.id"
       class="record"
       :class="{
@@ -79,12 +104,19 @@ const isCurrent = (track: Track): boolean => props.currentId === track.id
         <slot name="actions" :track="track" :index="index" />
       </div>
     </div>
+
+    <div v-if="pageCount > 1" class="wall-pager">
+      <button type="button" class="wp-btn" :disabled="page === 0" @click="gotoPage(page - 1)">←</button>
+      <span>{{ page + 1 }} / {{ pageCount }}（共 {{ props.tracks.length }} 张）</span>
+      <button type="button" class="wp-btn" :disabled="page >= pageCount - 1" @click="gotoPage(page + 1)">→</button>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .record-wall {
   display: grid;
+  position: relative;
   grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
   gap: 18px 14px;
   padding: 6px 2px 8px;
@@ -248,6 +280,30 @@ const isCurrent = (track: Track): boolean => props.currentId === track.id
 .record:hover .record-caption {
   color: #7cc4ff;
   text-shadow: 0 0 12px rgba(124, 196, 255, 0.45);
+}
+
+.wall-pager {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 6px;
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+.wp-btn {
+  min-width: 34px;
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.wp-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .record-actions {

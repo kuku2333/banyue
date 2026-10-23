@@ -43,12 +43,15 @@
 html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  /* 底色放 html：body 若有不透明底色会把 z-index:-1 的伪元素整层盖住 */
+  background: var(--bg);
 }
 
 body {
   margin: 0;
   min-height: 100dvh;
-  background: var(--bg);
+  /* 透明，让 body::before/::after 的动态渐变透出来 */
+  background: transparent;
   color: var(--text);
   font-family: var(--sans);
   font-size: 16px;
@@ -68,44 +71,70 @@ body::after {
 
 body::before {
   /* 稍微超出视口，给缓慢漂移留出余量，避免边缘露白 */
-  inset: -12%;
+  inset: -18%;
   background:
-    radial-gradient(760px 460px at 12% 6%, rgba(94, 234, 212, 0.12), transparent 62%),
-    radial-gradient(700px 460px at 88% 10%, rgba(125, 211, 252, 0.11), transparent 60%),
-    radial-gradient(900px 700px at 50% 104%, rgba(129, 140, 248, 0.09), transparent 65%);
-  animation: aurora-drift 48s ease-in-out infinite alternate;
+    radial-gradient(820px 520px at 14% 8%, rgba(94, 234, 212, 0.22), transparent 62%),
+    radial-gradient(760px 520px at 86% 12%, rgba(125, 211, 252, 0.2), transparent 60%),
+    radial-gradient(980px 760px at 50% 108%, rgba(129, 140, 248, 0.18), transparent 66%),
+    radial-gradient(600px 420px at 74% 62%, rgba(56, 189, 248, 0.09), transparent 68%);
+  animation: aurora-drift 34s ease-in-out infinite alternate;
   will-change: transform, filter;
 }
 
-/* 背景缓慢流动：位移很小、色相只漂一点点，不抢内容 */
+/* 第二层：反向缓慢流动，和主层叠加出更明显的「活」感 */
+body::after {
+  background-image:
+    radial-gradient(520px 380px at 30% 80%, rgba(45, 212, 191, 0.13), transparent 70%),
+    radial-gradient(460px 340px at 72% 30%, rgba(96, 165, 250, 0.12), transparent 72%),
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    64px 64px,
+    64px 64px;
+  mask-image: radial-gradient(circle at 50% 10%, #000 0%, transparent 78%);
+  -webkit-mask-image: radial-gradient(circle at 50% 10%, #000 0%, transparent 78%);
+  animation: aurora-drift-reverse 26s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+
+/* 背景缓慢流动：色相与位置都有可见变化，但仍不抢内容 */
 @keyframes aurora-drift {
   0% {
-    transform: translate3d(-1.6%, -1%, 0) scale(1.02);
-    filter: hue-rotate(0deg) saturate(1);
+    transform: translate3d(-3.5%, -2%, 0) scale(1.02) rotate(-0.6deg);
+    filter: hue-rotate(-14deg) saturate(1.05);
   }
   50% {
-    transform: translate3d(1.4%, 1.2%, 0) scale(1.05);
-    filter: hue-rotate(14deg) saturate(1.08);
+    transform: translate3d(2.6%, 2.4%, 0) scale(1.1) rotate(0.5deg);
+    filter: hue-rotate(26deg) saturate(1.35);
   }
   100% {
-    transform: translate3d(-0.8%, 1.8%, 0) scale(1.03);
-    filter: hue-rotate(-12deg) saturate(0.96);
+    transform: translate3d(3.2%, -2.6%, 0) scale(1.06) rotate(-0.3deg);
+    filter: hue-rotate(-22deg) saturate(0.92);
+  }
+}
+
+@keyframes aurora-drift-reverse {
+  0% {
+    transform: translate3d(2.4%, 1.8%, 0) scale(1.04);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate3d(-3%, -1.6%, 0) scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(-1.4%, 2.8%, 0) scale(1.05);
+    opacity: 0.7;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body::before {
+  body::before,
+  body::after {
     animation: none;
   }
-}
-
-body::after {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 72%);
-  -webkit-mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 72%);
 }
 
 a {
