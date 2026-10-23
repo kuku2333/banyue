@@ -220,12 +220,9 @@ function onTap(): void {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.55) 0 6%, rgba(255, 255, 255, 0) 22%),
-    radial-gradient(circle at 50% 50%, #2b3036 0%, #12161a 62%, #05070a 100%);
+  background: radial-gradient(circle at 50% 50%, #2b3036 0%, #12161a 62%, #05070a 100%);
   box-shadow:
     0 3px 10px rgba(0, 0, 0, 0.65),
-    inset 0 1px 1px rgba(255, 255, 255, 0.35),
     inset 0 -2px 4px rgba(0, 0, 0, 0.8);
 }
 /* 臂杆：黑色发亮——中间一道竖向高光，像抛光黑铬 */
