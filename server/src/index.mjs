@@ -22,6 +22,14 @@ import {
   verifyPassword,
   verifyRecoveryCode,
 } from './auth.mjs'
+import {
+  coverHeaders,
+  getPlayInfo,
+  isAllowedBiliUrl,
+  proxyBiliStream,
+  resolveVideo,
+  safeFileName,
+} from './bilibili.mjs'
 
 const PORT = Number(process.env.PORT ?? 8787)
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -814,6 +822,98 @@ route('DELETE', '/api/posts/:slug/hide', async (req, res, params) => {
   if (!admin) return
   run('DELETE FROM hidden_posts WHERE slug = ?', [params.slug])
   send(res, 200, { ok: true })
+})
+
+/* ---------------- B站解析与流代理 ---------------- */
+
+route('POST', '/api/bilibili/resolve', async (req, res) => {
+  const body = await readBody(req)
+  try {
+    const info = await resolveVideo(body.url)
+    send(res, 200, info)
+  } catch (error) {
+    fail(res, 400, error.message)
+  }
+})
+
+route('GET', '/api/bilibili/playinfo', async (req, res, _params, url) => {
+  const aid = Number(url.searchParams.get('aid'))
+  const cid = Number(url.searchParams.get('cid'))
+  if (!aid || !cid) return fail(res, 400, '缺少 aid / cid')
+  try {
+    const info = await getPlayInfo(aid, cid)
+    send(res, 200, info)
+  } catch (error) {
+    fail(res, 502, error.message)
+  }
+})
+
+/** 流代理：视频/音频直链带 Referer 抓取，透传 Range 便于播放器拖动 */
+route('GET', '/api/bilibili/stream', async (req, res, _params, url) => {
+  const target = url.searchParams.get('url')
+  if (!target) return fail(res, 400, '缺少 url')
+  if (!isAllowedBiliUrl(target)) return fail(res, 403, '只允许代理 B站 媒体地址')
+  const range = req.headers.range
+  let upstream
+  try {
+    upstream = await proxyBiliStream(target, range)
+  } catch (error) {
+    return fail(res, 502, error.message)
+  }
+  const headers = {
+    'content-type': upstream.headers.get('content-type') ?? 'application/octet-stream',
+    'accept-ranges': 'bytes',
+    'cache-control': 'no-store',
+  }
+  const length = upstream.headers.get('content-length')
+  const contentRange = upstream.headers.get('content-range')
+  if (length) headers['content-length'] = length
+  if (contentRange) headers['content-range'] = contentRange
+  // 带 download=1 时按附件下载（文件名由 filename 参数给出）
+  if (url.searchParams.get('download') === '1') {
+    const title = url.searchParams.get('title') ?? 'bilibili'
+    const ext = url.searchParams.get('ext') ?? '.mp4'
+    headers['content-disposition'] = `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName(title, ext))}`
+  }
+  res.writeHead(upstream.status, headers)
+  if (!upstream.body) return res.end()
+  const reader = upstream.body.getReader()
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      res.write(Buffer.from(value))
+    }
+  } catch {
+    // 客户端提前断开（切歌、拖进度）时上游流会抛错，忽略
+  } finally {
+    res.end()
+  }
+})
+
+/** 封面代理：B站图片有防盗链，不代理会 403 */
+route('GET', '/api/bilibili/cover', async (req, res, _params, url) => {
+  const target = url.searchParams.get('url')
+  if (!target || !isAllowedBiliUrl(target)) return fail(res, 400, '封面地址不合法')
+  try {
+    const upstream = await fetch(target, { headers: coverHeaders() })
+    if (!upstream.ok) return fail(res, 502, `封面抓取失败 ${upstream.status}`)
+    res.writeHead(200, {
+      'content-type': upstream.headers.get('content-type') ?? 'image/jpeg',
+      'cache-control': 'public, max-age=86400',
+    })
+    const buffer = Buffer.from(await upstream.arrayBuffer())
+    res.end(buffer)
+  } catch (error) {
+    fail(res, 502, error.message)
+  }
+})
+
+/** 下载地址：给出建议文件名（前端用 <a download> 触发保存） */
+route('GET', '/api/bilibili/name', async (_req, res, _params, url) => {
+  const title = url.searchParams.get('title') ?? ''
+  const ext = url.searchParams.get('ext') ?? '.mp4'
+  send(res, 200, { filename: safeFileName(title, ext) })
 })
 
 /* ---------------- 静态文件 ---------------- */

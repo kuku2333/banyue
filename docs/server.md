@@ -93,6 +93,25 @@ BANYUE_FILES_DIR=/path/files node src/index.mjs   # 上传文件目录（默认 
 **旧数据迁移**：`node scripts/backfill-hash.mjs` 会给所有无指纹资产回填指纹、按
 `(owner, kind, hash)` 删重复（保留最早一条）、清理磁盘孤儿文件（如测试残留的 `.html`）。可重复执行。
 
+## B站解析与媒体代理
+
+前端 `/bili` 页（解析 → 选清晰度下载 → 提取音频 → 波形剪辑导出 WAV）依赖这几个接口：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| POST | `/api/bilibili/resolve` | `{url}`：链接 / BV 号 / av 号 → 标题、封面、分P |
+| GET | `/api/bilibili/playinfo?aid=&cid=` | 清晰度列表 + dash 视频/音频流地址 |
+| GET | `/api/bilibili/stream?url=` | 带 Referer 代理 B站 媒体流，透传 Range；`download=1` 时按附件下载 |
+| GET | `/api/bilibili/cover?url=` | 封面代理（B站 图片有防盗链） |
+
+要点：
+
+- **只代理 B站 域名**（`*.bilivideo.com/.cn`、`*.hdslb.com` 等白名单），防止被当成任意 URL 代理（SSRF）；
+- 未登录 B站 通常只能拿 480P/360P；配置 `BANYUE_BILI_SESSDATA` 环境变量后可解锁更高清晰度；
+- 前端拉音频时**按 1MB 分段 + 重试**，因为 B站 CDN 单次长连接容易断；
+- 剪辑是纯前端：`AudioContext.decodeAudioData` 解码 → 波形绘制 → 选区 → 编码成 16-bit PCM WAV 导出，不依赖 ffmpeg；
+- 下载链接有时效（B站 返回的地址带 `deadline`），放久了要重新解析。
+
 ## 管理员
 
 ```bash
