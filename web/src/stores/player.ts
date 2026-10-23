@@ -301,6 +301,15 @@ export const usePlayerStore = defineStore('player', () => {
     duration.value = 0
   }
 
+  /**
+   * 曲库版本号：改了歌名/歌手等元数据后自增，
+   * 列表页 watch 它来重新读库，保证各处同步刷新（Vue 响应式）。
+   */
+  const libraryRev = ref(0)
+  function markLibraryChanged(): void {
+    libraryRev.value += 1
+  }
+
   function isFavorite(id: string): boolean {
     return favorites.value.some((track) => track.id === id)
   }
@@ -327,6 +336,8 @@ export const usePlayerStore = defineStore('player', () => {
     volume,
     analyser,
     current,
+    libraryRev,
+    markLibraryChanged,
     progress,
     hasNext,
     hasPrev,

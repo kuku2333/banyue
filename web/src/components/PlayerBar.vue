@@ -61,6 +61,8 @@ async function saveEdit(): Promise<void> {
     if (index >= 0) {
       queue[index] = { ...queue[index]!, title, artist }
     }
+    // 通知列表页重新读库（唱片墙/唱片机立刻跟着变）
+    player.markLibraryChanged()
     editOpen.value = false
   } catch (err) {
     editError.value = (err as Error).message

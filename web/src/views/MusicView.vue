@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { REGIONS, fetchTopSongs, fingerprint, isAudioFile, searchSongs, type Region, type Track } from '@/lib/music'
@@ -430,6 +430,15 @@ onMounted(() => {
   void refreshLocal()
   void loadCloud()
 })
+
+// 别处改了歌名/歌手等元数据（比如悬浮窗编辑），这里重新读库，界面立刻同步
+watch(
+  () => player.libraryRev,
+  () => {
+    void refreshLocal()
+    void loadCloud()
+  },
+)
 </script>
 
 <template>
