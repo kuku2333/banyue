@@ -80,8 +80,21 @@ async function load(): Promise<void> {
  * 分段拉取音频：B站 的 CDN 单次长连接容易断，按 1MB 分段 + 重试最稳。
  */
 async function fetchAudio(url: string): Promise<ArrayBuffer> {
-  const probe = await fetch(url, { headers: { range: 'bytes=0-0' } })
-  if (!probe.ok) throw new Error(`读取音频失败（${probe.status}）`)
+  // 探测总长用 1KB Range 并重试（B站 CDN 节点偶发失联）
+  let probe: Response | null = null
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const response = await fetch(url, { headers: { range: 'bytes=0-1023' } })
+      if (response.ok) {
+        probe = response
+        break
+      }
+    } catch {
+      /* 重试 */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)))
+  }
+  if (!probe) throw new Error('读取音频失败，B站 节点不稳定，稍后重试或重新解析')
   const total = Number(/bytes \d+-\d+\/(\d+)/.exec(probe.headers.get('content-range') ?? '')?.[1] ?? 0)
   if (!total) {
     // 服务端不支持 Range，只能整段拉

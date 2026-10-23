@@ -156,16 +156,28 @@ export async function getPlayInfo(aid, cid) {
 /** 代理 B站流：带 Referer 抓取并透传给客户端（支持 Range，便于拖动进度/断点） */
 export async function proxyBiliStream(url, range) {
   if (!isAllowedBiliUrl(url)) throw new Error('只允许代理 B站 的媒体地址')
-  const response = await fetch(url, {
-    headers: {
-      ...headers(),
-      ...(range ? { range } : {}),
-    },
-  })
-  if (!response.ok && response.status !== 206) {
-    throw new Error(`抓取失败 HTTP ${response.status}`)
+  const request = () =>
+    fetch(url, {
+      headers: {
+        ...headers(),
+        ...(range ? { range } : {}),
+      },
+    })
+  // B站 的 mcdn 节点偶发连不上/秒断，重试几次能显著降低失败率
+  let lastError = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await request()
+      if (response.ok || response.status === 206) return response
+      lastError = new Error(`抓取失败 HTTP ${response.status}`)
+      // 403/404 这类重试也没用，直接返回
+      if (response.status === 403 || response.status === 404 || response.status === 410) throw lastError
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)))
   }
-  return response
+  throw lastError ?? new Error('抓取失败')
 }
 
 /** 给下载的文件起个安全的名字 */

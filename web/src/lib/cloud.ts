@@ -53,12 +53,18 @@ export async function uploadAsset(
   }
   if (meta.hash) headers['x-hash'] = encodeURIComponent(meta.hash)
 
-  const response = await fetch(`/api/assets?kind=${kind}`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers,
-    body: blob,
-  })
+  let response: Response
+  try {
+    response = await fetch(`/api/assets?kind=${kind}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: blob,
+    })
+  } catch {
+    // 大文件上传时网络中断/代理断开，别把 "Failed to fetch" 抛给用户
+    throw new Error('上传中断了，检查网络后重试')
+  }
   const text = await response.text()
   const data = text ? (JSON.parse(text) as { id?: string; duplicate?: boolean; error?: string }) : {}
   if (!response.ok) throw new Error(data.error ?? `上传失败（${response.status}）`)

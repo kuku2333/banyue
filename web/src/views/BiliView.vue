@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { api } from '@/lib/api'
+import { fingerprint } from '@/lib/music'
+import { addTrack, findTrackByHash } from '@/lib/db'
+import { listAssets, uploadAsset } from '@/lib/cloud'
+import { useAuthStore } from '@/stores/auth'
 import AudioTrimmer from '@/components/AudioTrimmer.vue'
+
+const auth = useAuthStore()
 
 /** B站视频解析 / 下载 / 提取音频 / 剪切 */
 interface PageInfo {
@@ -56,6 +62,24 @@ const extracting = ref(false)
 const trimSrc = ref('')
 const trimTitle = ref('')
 const trimKey = ref(0)
+const savingLocal = ref(false)
+const savingCloud = ref(false)
+const saveMessage = ref('')
+const saveError = ref('')
+
+function flash(text: string, isError = false): void {
+  if (isError) {
+    saveError.value = text
+    saveMessage.value = ''
+  } else {
+    saveMessage.value = text
+    saveError.value = ''
+  }
+  setTimeout(() => {
+    saveMessage.value = ''
+    saveError.value = ''
+  }, 5000)
+}
 
 const currentPage = computed<PageInfo | null>(() => video.value?.pages[pageIndex.value] ?? null)
 
@@ -159,6 +183,149 @@ function extractAudio(): void {
   trimSrc.value = proxyUrl(item.url)
   trimKey.value += 1
   setTimeout(() => (extracting.value = false), 300)
+}
+
+/** 分段拉取整段音频（B站 CDN 单连接易断，按 1MB 分块 + 重试） */
+async function fetchAudioBlob(url: string): Promise<Blob> {
+  // 探测总长：用 1KB 的 Range 并重试（B站 CDN 节点偶发失联）
+  let probe: Response | null = null
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const response = await fetch(url, { headers: { range: 'bytes=0-1023' } })
+      if (response.ok) {
+        probe = response
+        break
+      }
+    } catch {
+      /* 重试 */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)))
+  }
+  if (!probe) throw new Error('读取音频失败，B站 节点不稳定，稍后重试或重新解析')
+  const total = Number(/bytes \d+-\d+\/(\d+)/.exec(probe.headers.get('content-range') ?? '')?.[1] ?? 0)
+  if (!total) {
+    const full = await fetch(url)
+    if (!full.ok) throw new Error(`读取音频失败（${full.status}）`)
+    return full.blob()
+  }
+  const chunkSize = 1 << 20
+  const parts: Uint8Array[] = []
+  for (let start = 0; start < total; start += chunkSize) {
+    const end = Math.min(total - 1, start + chunkSize - 1)
+    let done = false
+    for (let attempt = 0; attempt < 4 && !done; attempt++) {
+      try {
+        const response = await fetch(url, { headers: { range: `bytes=${start}-${end}` } })
+        if (response.status === 206 || response.status === 200) {
+          const buffer = await response.arrayBuffer()
+          if (buffer.byteLength > 0) {
+            parts.push(new Uint8Array(buffer))
+            done = true
+          }
+        }
+      } catch {
+        /* 重试 */
+      }
+      if (!done) await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)))
+    }
+    if (!done) throw new Error('音频下载中断，链接可能过期，重新解析一次')
+  }
+  return new Blob(parts as BlobPart[], { type: 'audio/mp4' })
+}
+
+/** 下载整段音频；失败了自动重新解析一次（B站 链接会过期 / 节点会抖） */
+async function fetchAudioWithRefresh(): Promise<Blob> {
+  const item = selectedAudio.value
+  if (!item) throw new Error('没有可用的音轨')
+  try {
+    return await fetchAudioBlob(proxyUrl(item.url))
+  } catch {
+    // 链接过期或节点失联：重新取一次 playurl 再试
+    await loadPlay()
+    const fresh = selectedAudio.value
+    if (!fresh) throw new Error('音频链接已失效，重新解析一次视频')
+    return await fetchAudioBlob(proxyUrl(fresh.url))
+  }
+}
+
+/** 音频的标题与艺人（分P 时用「标题 - 分P」） */
+const trackName = computed(() => {
+  const info = video.value
+  if (!info) return 'bilibili'
+  const page = currentPage.value
+  const chunk = page && info.pages.length > 1 ? `${info.title} - ${page.title}` : info.title
+  return chunk.trim().slice(0, 80)
+})
+
+/** 保存到本地音乐库（IndexedDB，按指纹判重） */
+async function saveToLocal(): Promise<void> {
+  const item = selectedAudio.value
+  if (!item || savingLocal.value) return
+  saveMessage.value = ''
+  saveError.value = ''
+  savingLocal.value = true
+  try {
+    const blob = await fetchAudioWithRefresh()
+    const buffer = await blob.arrayBuffer()
+    const hash = await fingerprint(buffer, `${trackName.value}-${blob.size}`)
+    if (await findTrackByHash(hash)) {
+      flash('本地音乐里已有这首，跳过')
+      return
+    }
+    await addTrack({
+      id: hash,
+      title: trackName.value,
+      artist: video.value?.owner ?? '',
+      size: blob.size,
+      hash,
+      createdAt: Date.now(),
+      data: blob,
+    })
+    flash(`已保存到本地音乐：《${trackName.value}》`)
+  } catch (err) {
+    flash((err as Error).message || '保存到本地失败', true)
+  } finally {
+    savingLocal.value = false
+  }
+}
+
+/** 保存到云端音乐库（需要登录，服务端也按指纹判重） */
+async function saveToCloud(): Promise<void> {
+  const item = selectedAudio.value
+  if (!item || savingCloud.value) return
+  if (!auth.loggedIn) {
+    auth.openDialog()
+    return
+  }
+  saveMessage.value = ''
+  saveError.value = ''
+  savingCloud.value = true
+  try {
+    const blob = await fetchAudioWithRefresh()
+    const buffer = await blob.arrayBuffer()
+    const hash = await fingerprint(buffer, `${trackName.value}-${blob.size}`)
+    // 先查云端指纹：命中就不必再传一份（省流量，也避免大文件上传失败）
+    try {
+      const existing = await listAssets('track')
+      if (existing.some((asset) => asset.hash && asset.hash === hash)) {
+        flash('云端已有这首，跳过')
+        return
+      }
+    } catch {
+      /* 查不到就让服务端去判重 */
+    }
+    const result = await uploadAsset('track', blob, {
+      title: trackName.value,
+      subtitle: video.value?.owner ?? '',
+      filename: `${trackName.value}.m4a`,
+      hash,
+    })
+    flash(result.duplicate ? '云端已有这首，跳过' : `已上传到云端：《${trackName.value}》`)
+  } catch (err) {
+    flash((err as Error).message || '保存到云端失败', true)
+  } finally {
+    savingCloud.value = false
+  }
 }
 </script>
 
@@ -271,7 +438,28 @@ function extractAudio(): void {
             <button type="button" class="btn primary" :disabled="!selectedAudio || extracting" @click="extractAudio">
               {{ extracting ? '准备中…' : '提取到剪辑器' }}
             </button>
+            <button
+              type="button"
+              class="btn"
+              :disabled="!selectedAudio || savingLocal"
+              title="存进浏览器本地音乐库，可在「听歌 → 本地音乐」里播放"
+              @click="saveToLocal"
+            >
+              {{ savingLocal ? '保存中…' : '保存到本地音乐' }}
+            </button>
+            <button
+              type="button"
+              class="btn"
+              :disabled="!selectedAudio || savingCloud"
+              title="上传到云端音乐库，登录后所有人可听"
+              @click="saveToCloud"
+            >
+              {{ savingCloud ? '上传中…' : '保存到云端音乐' }}
+            </button>
           </div>
+          <p v-if="saveMessage" class="save-msg">{{ saveMessage }}</p>
+          <p v-if="saveError" class="save-err">{{ saveError }}</p>
+          <p v-if="!auth.loggedIn" class="muted small">保存到云端需要先登录（右上角「登录」）。</p>
         </div>
       </template>
     </section>
@@ -390,6 +578,16 @@ function extractAudio(): void {
 a.btn {
   display: inline-block;
   text-decoration: none;
+}
+.save-msg {
+  margin: 10px 0 0;
+  color: #58d68d;
+  font-size: 0.82rem;
+}
+.save-err {
+  margin: 10px 0 0;
+  color: #ff7b72;
+  font-size: 0.82rem;
 }
 
 @media (max-width: 700px) {
