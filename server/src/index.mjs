@@ -296,6 +296,210 @@ route('GET', '/api/me', async (req, res) => {
 
 /* 收藏夹 */
 
+/* ---------------- 歌单（可公开/私有，可隐藏别人的） ---------------- */
+
+/** 单条歌单的公开形态 */
+function playlistShape(item, viewer) {
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    isPublic: Number(item.is_public) === 1,
+    createdAt: item.created_at,
+    itemCount: Number(item.item_count ?? 0),
+    owner: { username: item.username, displayName: item.display_name },
+    mine: viewer ? viewer.username === item.username : false,
+  }
+}
+
+route('GET', '/api/playlists', async (req, res) => {
+  const user = userFromRequest(req)
+  // 自己的全部（含私有）+ 别人的公开歌单；但去掉自己隐藏的
+  const list = rows(
+    `SELECT p.id, p.name, p.description, p.is_public, p.created_at, u.username, u.display_name,
+            (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id) AS item_count
+     FROM playlists p JOIN users u ON u.id = p.owner_id
+     WHERE p.is_public = 1 OR p.owner_id = ?
+     ORDER BY p.created_at DESC LIMIT 200`,
+    [user?.id ?? ''],
+  )
+  const hidden = user
+    ? rows('SELECT playlist_id FROM playlist_hides WHERE user_id = ?', [user.id]).map((r) => r.playlist_id)
+    : []
+  const hiddenSet = new Set(hidden)
+  send(res, 200, {
+    playlists: list
+      .filter((item) => !hiddenSet.has(item.id))
+      .map((item) => playlistShape(item, user)),
+    hidden,
+  })
+})
+
+route('GET', '/api/playlists/:id', async (req, res, params) => {
+  const playlist = row(
+    `SELECT p.*, u.username, u.display_name FROM playlists p JOIN users u ON u.id = p.owner_id WHERE p.id = ?`,
+    [params.id],
+  )
+  if (!playlist) return fail(res, 404, '歌单不存在')
+  const user = userFromRequest(req)
+  const mine = user?.username === playlist.username
+  if (Number(playlist.is_public) !== 1 && !mine) return fail(res, 403, '这是别人的私有歌单')
+  const items = rows(
+    `SELECT id, item_key, title, artist, asset_id, hash, position, created_at
+     FROM playlist_items WHERE playlist_id = ? ORDER BY position ASC, created_at ASC`,
+    [params.id],
+  )
+  send(res, 200, {
+    playlist: {
+      ...playlistShape({ ...playlist, item_count: items.length }, user),
+      items: items.map((item) => ({
+        id: item.id,
+        key: item.item_key,
+        title: item.title,
+        artist: item.artist,
+        assetId: item.asset_id,
+        hash: item.hash,
+        position: item.position,
+      })),
+    },
+  })
+})
+
+route('POST', '/api/playlists', async (req, res) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const body = await readBody(req)
+  const name = String(body.name ?? '').trim().slice(0, 60)
+  if (!name) return fail(res, 400, '歌单名不能为空')
+  const description = String(body.description ?? '').trim().slice(0, 200)
+  const isPublic = body.isPublic === false ? 0 : 1
+  const id = newId('pl')
+  run('INSERT INTO playlists (id, owner_id, name, description, is_public, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+    id,
+    user.id,
+    name,
+    description,
+    isPublic,
+    Date.now(),
+  ])
+  send(res, 201, { id })
+})
+
+route('PATCH', '/api/playlists/:id', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const playlist = row('SELECT owner_id FROM playlists WHERE id = ?', [params.id])
+  if (!playlist) return fail(res, 404, '歌单不存在')
+  if (!canManage(user, playlist.owner_id)) return fail(res, 403, '只能改自己的歌单')
+  const body = await readBody(req)
+  const sets = []
+  const values = []
+  if (typeof body.name === 'string') {
+    const name = body.name.trim().slice(0, 60)
+    if (!name) return fail(res, 400, '歌单名不能为空')
+    sets.push('name = ?')
+    values.push(name)
+  }
+  if (typeof body.description === 'string') {
+    sets.push('description = ?')
+    values.push(body.description.trim().slice(0, 200))
+  }
+  if (typeof body.isPublic === 'boolean') {
+    sets.push('is_public = ?')
+    values.push(body.isPublic ? 1 : 0)
+  }
+  if (!sets.length) return fail(res, 400, '没有要改的内容')
+  values.push(params.id)
+  run(`UPDATE playlists SET ${sets.join(', ')} WHERE id = ?`, values)
+  send(res, 200, { ok: true })
+})
+
+route('DELETE', '/api/playlists/:id', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const playlist = row('SELECT owner_id FROM playlists WHERE id = ?', [params.id])
+  if (!playlist) return fail(res, 404, '歌单不存在')
+  if (!canManage(user, playlist.owner_id)) return fail(res, 403, '只能删自己的歌单')
+  run('DELETE FROM playlists WHERE id = ?', [params.id])
+  send(res, 200, { ok: true })
+})
+
+route('POST', '/api/playlists/:id/items', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const playlist = row('SELECT owner_id FROM playlists WHERE id = ?', [params.id])
+  if (!playlist) return fail(res, 404, '歌单不存在')
+  if (!canManage(user, playlist.owner_id)) return fail(res, 403, '只能往自己的歌单里加歌')
+  const body = await readBody(req)
+  const title = String(body.title ?? '').trim().slice(0, 120)
+  if (!title) return fail(res, 400, '缺少歌名')
+  const artist = String(body.artist ?? '').trim().slice(0, 80)
+  const key = String(body.key ?? body.assetId ?? title).trim().slice(0, 200)
+  const assetId = String(body.assetId ?? '').trim().slice(0, 80)
+  const hash = String(body.hash ?? '').trim().slice(0, 64)
+  const max = row('SELECT COALESCE(MAX(position), -1) AS max FROM playlist_items WHERE playlist_id = ?', [params.id])
+  try {
+    run(
+      'INSERT INTO playlist_items (id, playlist_id, item_key, title, artist, asset_id, hash, position, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [newId('pli'), params.id, key, title, artist, assetId, hash, Number(max?.max ?? -1) + 1, Date.now()],
+    )
+  } catch {
+    return fail(res, 409, '这首歌已经在歌单里了')
+  }
+  send(res, 201, { ok: true })
+})
+
+route('DELETE', '/api/playlists/:id/items/:itemId', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const playlist = row('SELECT owner_id FROM playlists WHERE id = ?', [params.id])
+  if (!playlist) return fail(res, 404, '歌单不存在')
+  if (!canManage(user, playlist.owner_id)) return fail(res, 403, '只能改自己的歌单')
+  run('DELETE FROM playlist_items WHERE id = ? AND playlist_id = ?', [params.itemId, params.id])
+  send(res, 200, { ok: true })
+})
+
+/** 隐藏 / 取消隐藏别人的歌单（只影响自己的列表） */
+route('POST', '/api/playlists/:id/hide', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const playlist = row('SELECT owner_id FROM playlists WHERE id = ?', [params.id])
+  if (!playlist) return fail(res, 404, '歌单不存在')
+  if (playlist.owner_id === user.id) return fail(res, 400, '不用隐藏自己的歌单')
+  run('INSERT OR REPLACE INTO playlist_hides (user_id, playlist_id, created_at) VALUES (?, ?, ?)', [
+    user.id,
+    params.id,
+    Date.now(),
+  ])
+  send(res, 200, { ok: true })
+})
+
+route('DELETE', '/api/playlists/:id/hide', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  run('DELETE FROM playlist_hides WHERE user_id = ? AND playlist_id = ?', [user.id, params.id])
+  send(res, 200, { ok: true })
+})
+
+/** 我的隐藏歌单列表（用于「恢复显示」） */
+route('GET', '/api/playlists-hidden', async (req, res) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const list = rows(
+    `SELECT p.id, p.name, u.username, u.display_name
+     FROM playlist_hides h JOIN playlists p ON p.id = h.playlist_id JOIN users u ON u.id = p.owner_id
+     WHERE h.user_id = ? ORDER BY h.created_at DESC`,
+    [user.id],
+  )
+  send(res, 200, {
+    playlists: list.map((item) => ({
+      id: item.id,
+      name: item.name,
+      owner: { username: item.username, displayName: item.display_name },
+    })),
+  })
+})
+
 route('GET', '/api/collections', async (req, res, _params, url) => {
   const type = url.searchParams.get('type')
   const params = []

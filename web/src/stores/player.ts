@@ -93,6 +93,15 @@ export const usePlayerStore = defineStore('player', () => {
       if (!blob) return null
       return { url: URL.createObjectURL(blob), local: true }
     }
+    // 云端曲：本地有同指纹的文件就直接播本地，省流量、也更快
+    if (track.source === 'cloud' && track.hash) {
+      const { findTrackByHash, getTrackBlob } = await import('@/lib/db')
+      const local = await findTrackByHash(track.hash)
+      if (local) {
+        const blob = await getTrackBlob(local.id)
+        if (blob) return { url: URL.createObjectURL(blob), local: true }
+      }
+    }
     const url = await resolvePreview(track)
     if (!url) return null
     const cached = blobCache.get(url)

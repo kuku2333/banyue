@@ -47,6 +47,37 @@ db.exec(`
     UNIQUE (collection_id, item_key)
   );
 
+  /* 歌单：公开的歌单所有人都能看到；is_public=0 只有自己可见 */
+  CREATE TABLE IF NOT EXISTS playlists (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    is_public INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS playlist_items (
+    id TEXT PRIMARY KEY,
+    playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    item_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    artist TEXT NOT NULL DEFAULT '',
+    asset_id TEXT NOT NULL DEFAULT '',
+    hash TEXT NOT NULL DEFAULT '',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    UNIQUE (playlist_id, item_key)
+  );
+
+  /* 别人可以选择隐藏某个公开歌单（只影响自己的列表） */
+  CREATE TABLE IF NOT EXISTS playlist_hides (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, playlist_id)
+  );
+
   CREATE TABLE IF NOT EXISTS bookmarks (
     id TEXT PRIMARY KEY,
     book_key TEXT NOT NULL,
@@ -80,6 +111,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_key);
   CREATE INDEX IF NOT EXISTS idx_comments_song ON song_comments(song_key);
   CREATE INDEX IF NOT EXISTS idx_pc_book_chapter ON paragraph_comments(book_key, chapter);
+  CREATE INDEX IF NOT EXISTS idx_playlists_owner ON playlists(owner_id);
+  CREATE INDEX IF NOT EXISTS idx_playlist_items_pl ON playlist_items(playlist_id, position);
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
   CREATE TABLE IF NOT EXISTS assets (

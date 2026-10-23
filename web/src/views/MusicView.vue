@@ -10,8 +10,9 @@ import { formatCount } from '@/lib/format'
 import BatchBar from '@/components/BatchBar.vue'
 import Turntable from '@/components/Turntable.vue'
 import RecordWall from '@/components/RecordWall.vue'
+import PlaylistPanel from '@/components/PlaylistPanel.vue'
 
-type Tab = 'charts' | 'search' | 'local' | 'cloud' | 'favs' | 'bili' | 'douyin'
+type Tab = 'charts' | 'search' | 'local' | 'cloud' | 'playlists' | 'favs' | 'bili' | 'douyin'
 
 const player = usePlayerStore()
 const auth = useAuthStore()
@@ -36,6 +37,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'search', label: '搜索' },
   { id: 'local', label: '本地音乐' },
   { id: 'cloud', label: '云端音乐' },
+  { id: 'playlists', label: '歌单' },
   { id: 'favs', label: '收藏' },
   { id: 'bili', label: 'B站' },
   { id: 'douyin', label: '抖音' },
@@ -58,6 +60,8 @@ const cloudList = computed<Track[]>(() =>
     artist: asset.subtitle || '云端上传',
     source: 'cloud' as const,
     previewUrl: assetUrl(asset.id),
+    // 带上指纹：本地若已有同一首，播放时优先走本地
+    hash: asset.hash,
   })),
 )
 
@@ -669,6 +673,11 @@ onMounted(() => {
         </template>
       </RecordWall>
       <p v-else class="empty">云端还没有音乐。把「本地音乐」里的歌传到云端，别人也能听。</p>
+    </section>
+
+    <!-- 歌单 -->
+    <section v-else-if="tab === 'playlists'" class="panel">
+      <PlaylistPanel />
     </section>
 
     <!-- 收藏 -->

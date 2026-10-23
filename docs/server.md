@@ -112,6 +112,27 @@ BANYUE_FILES_DIR=/path/files node src/index.mjs   # 上传文件目录（默认 
 - 剪辑是纯前端：`AudioContext.decodeAudioData` 解码 → 波形绘制 → 选区 → 编码成 16-bit PCM WAV 导出，不依赖 ffmpeg；
 - 下载链接有时效（B站 返回的地址带 `deadline`），放久了要重新解析。
 
+## 歌单
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/playlists` | 自己的全部（含私有）+ 别人的公开歌单，**排除自己隐藏的**；附带 `hidden` id 列表 |
+| GET | `/api/playlists/:id` | 详情（含歌曲：歌名/歌手/assetId/hash）；私有歌单只有主人能看 |
+| POST | `/api/playlists` | 新建：`{name, description?, isPublic?}`；`isPublic` 默认 true |
+| PATCH | `/api/playlists/:id` | 改名/改描述/改可见性（仅主人） |
+| DELETE | `/api/playlists/:id` | 删歌单（仅主人；歌本身不删） |
+| POST | `/api/playlists/:id/items` | 加歌：`{title, artist?, key?, assetId?, hash?}`；重复加返回 409 |
+| DELETE | `/api/playlists/:id/items/:itemId` | 移除歌 |
+| POST | `/api/playlists/:id/hide` | 隐藏别人的公开歌单（只影响自己的列表） |
+| DELETE | `/api/playlists/:id/hide` | 取消隐藏 |
+| GET | `/api/playlists-hidden` | 我隐藏的歌单（用于恢复显示） |
+
+要点：
+
+- **歌单本身存在云端**，`isPublic=0` 时只有自己可见，等于「还没上传云端」；
+- 隐藏是**每个查看者自己的设置**（`playlist_hides` 表），不影响歌单主人和其他人；
+- 歌单条目记 `hash`，播放云端歌时前端会先查本地库同指纹文件，**有就播本地**（省流量、更快）。
+
 ## 管理员
 
 ```bash
