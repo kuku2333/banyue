@@ -2,13 +2,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
-import { REGIONS, fetchTopSongs, fingerprint, formatTime, isAudioFile, searchSongs, type Region, type Track } from '@/lib/music'
+import { REGIONS, fetchTopSongs, fingerprint, isAudioFile, searchSongs, type Region, type Track } from '@/lib/music'
 import { addTrack, deleteTrack, findTrackByHash, getTrackBlob, listTracks, type TrackRecord } from '@/lib/db'
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, syncTracksToCloud, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import { BILI_HOT, BILI_SNAP } from '@/lib/bili'
 import { formatCount } from '@/lib/format'
 import BatchBar from '@/components/BatchBar.vue'
 import Turntable from '@/components/Turntable.vue'
+import RecordWall from '@/components/RecordWall.vue'
 
 type Tab = 'charts' | 'search' | 'local' | 'cloud' | 'favs' | 'bili' | 'douyin'
 
@@ -229,9 +230,6 @@ function toggleSelect(id: string): void {
 function toggleAll(ids: string[]): void {
   selected.value = selected.value.length >= ids.length ? [] : [...ids]
 }
-function isSelected(id: string): boolean {
-  return selected.value.includes(id)
-}
 
 /** 云端可删项（自己的或管理员可删任意） */
 function cloudDeletable(asset: CloudAsset | undefined): boolean {
@@ -409,27 +407,6 @@ function isCurrent(track: Track): boolean {
   return player.current?.id === track.id
 }
 
-/** 行点击：批量模式下选中；平时「把唱片放到唱片机」开播（按钮/勾选框除外） */
-function onRowClick(event: MouseEvent, list: Track[], index: number, id: string): void {
-  if ((event.target as HTMLElement).closest('button, label, input, a')) return
-  if (selectMode.value) {
-    toggleSelect(id)
-    return
-  }
-  void playFrom(list, index)
-}
-
-/** 云端行点击：批量模式下只允许勾可删项（自己的或管理员） */
-function onCloudRowClick(event: MouseEvent, index: number): void {
-  if ((event.target as HTMLElement).closest('button, label, input, a')) return
-  const asset = cloudTracks.value[index]
-  if (selectMode.value) {
-    if (cloudDeletable(asset)) toggleSelect(asset?.id ?? '')
-    return
-  }
-  void playFrom(cloudList.value, index)
-}
-
 onMounted(() => {
   void loadCharts()
   void refreshLocal()
@@ -445,25 +422,29 @@ onMounted(() => {
       <p>榜单来自 Apple Music 公开接口，试听 30 秒；点列表里任意一张唱片就放上唱片机开播。</p>
     </div>
 
-    <Turntable class="tt-wrap" />
+    <div class="music-stage">
+      <aside class="stage-left">
+        <Turntable class="tt-wrap" />
+      </aside>
 
-    <div class="chips" role="tablist" aria-label="音乐来源">
-      <button
-        v-for="item in TABS"
-        :key="item.id"
-        type="button"
-        class="chip"
-        :class="{ on: tab === item.id }"
-        role="tab"
-        :aria-selected="tab === item.id"
-        @click="tab = item.id"
-      >
-        {{ item.label }}
-      </button>
-    </div>
+      <div class="stage-right">
+        <div class="chips" role="tablist" aria-label="音乐来源">
+          <button
+            v-for="item in TABS"
+            :key="item.id"
+            type="button"
+            class="chip"
+            :class="{ on: tab === item.id }"
+            role="tab"
+            :aria-selected="tab === item.id"
+            @click="tab = item.id"
+          >
+            {{ item.label }}
+          </button>
+        </div>
 
-    <!-- 榜单 -->
-    <section v-if="tab === 'charts'" class="panel">
+        <!-- 榜单 -->
+        <section v-if="tab === 'charts'" class="panel">
       <div class="row-head">
         <div class="chips">
           <button
@@ -482,35 +463,25 @@ onMounted(() => {
 
       <p v-if="chartsLoading" class="empty">正在取榜单…</p>
       <p v-else-if="chartsError" class="notice">{{ chartsError }}（Apple 接口偶尔会限流，稍后再试）</p>
-      <ol v-else class="track-list">
-        <li
-          v-for="(track, index) in charts"
-          :key="track.id"
-          :class="{ playing: isCurrent(track) }"
-          title="双击播放 / 暂停"
-          @dblclick="player.toggleAt(charts, index)"
-          @click="onRowClick($event, charts, index, track.id)"
-        >
-          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
-          <span class="num">{{ String(index + 1).padStart(2, '0') }}</span>
-          <div class="t-main">
-            <b>{{ track.title }}</b>
-            <span>{{ track.artist }}</span>
-          </div>
-          <button type="button" class="play" :aria-label="`播放 ${track.title}`" @click="playFrom(charts, index)">
-            {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
-          </button>
+      <RecordWall
+        v-else
+        :tracks="charts"
+        :current-id="player.current?.id"
+        :playing="player.playing"
+        @play="(index) => playFrom(charts, index)"
+      >
+        <template #actions="{ track }">
           <button
             type="button"
-            class="star"
+            class="mini-act"
             :class="{ on: player.isFavorite(track.id) }"
             :aria-label="player.isFavorite(track.id) ? '取消收藏' : '收藏'"
             @click="player.toggleFavorite(track)"
           >
             ★
           </button>
-        </li>
-      </ol>
+        </template>
+      </RecordWall>
     </section>
 
     <!-- 搜索 -->
@@ -532,35 +503,25 @@ onMounted(() => {
         </button>
       </div>
       <p v-if="searchError" class="notice">{{ searchError }}</p>
-      <ol v-if="results.length" class="track-list">
-        <li
-          v-for="(track, index) in results"
-          :key="track.id"
-          :class="{ playing: isCurrent(track) }"
-          title="双击播放 / 暂停"
-          @dblclick="player.toggleAt(results, index)"
-          @click="onRowClick($event, results, index, track.id)"
-        >
-          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
-          <div class="t-main">
-            <b>{{ track.title }}</b>
-            <span>{{ track.artist }} · {{ track.album ?? '单曲' }}</span>
-          </div>
-          <span class="dur">{{ track.duration ? formatTime(track.duration) : '0:30' }}</span>
-          <button type="button" class="play" @click="playFrom(results, index)">
-            {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
-          </button>
+      <RecordWall
+        v-if="results.length"
+        :tracks="results"
+        :current-id="player.current?.id"
+        :playing="player.playing"
+        @play="(index) => playFrom(results, index)"
+      >
+        <template #actions="{ track }">
           <button
             type="button"
-            class="star"
+            class="mini-act"
             :class="{ on: player.isFavorite(track.id) }"
             :aria-label="player.isFavorite(track.id) ? '取消收藏' : '收藏'"
             @click="player.toggleFavorite(track)"
           >
             ★
           </button>
-        </li>
-      </ol>
+        </template>
+      </RecordWall>
       <p v-else-if="!searching" class="empty">搜一下试试。结果带 30 秒试听。</p>
     </section>
 
@@ -594,42 +555,41 @@ onMounted(() => {
       <p v-if="cloudError" class="notice">{{ cloudError }}</p>
       <p class="muted small">本地共 {{ local.length }} 首，存在浏览器 IndexedDB 里。</p>
 
-      <ol v-if="localTracks.length" class="track-list">
-        <li
-          v-for="(track, index) in localTracks"
-          :key="track.id"
-          :class="{ playing: isCurrent(track), selected: selectMode && isSelected(track.id) }"
-          :title="selectMode ? '点击选中' : '双击播放 / 暂停'"
-          @click="onRowClick($event, localTracks, index, track.id)"
-          @dblclick="!selectMode && player.toggleAt(localTracks, index)"
-        >
-          <label v-if="selectMode" class="sel" @click.stop>
-            <input type="checkbox" :checked="isSelected(track.id)" @change="toggleSelect(track.id)" />
-          </label>
-          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
-          <div class="t-main">
-            <b>{{ track.title }}</b>
-            <span>{{ track.artist }} · #{{ track.hash?.slice(0, 6) }}</span>
-          </div>
+      <RecordWall
+        v-if="localTracks.length"
+        :tracks="localTracks"
+        :current-id="player.current?.id"
+        :playing="player.playing"
+        :select-mode="selectMode"
+        :selected-ids="selected"
+        :selectable="() => true"
+        @play="(index) => playFrom(localTracks, index)"
+        @select="toggleSelect"
+      >
+        <template #actions="{ track }">
           <template v-if="!selectMode">
-            <button type="button" class="play" @click="playFrom(localTracks, index)">
-              {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
-            </button>
             <button
               type="button"
-              class="star"
+              class="mini-act"
               :class="{ on: player.isFavorite(track.id) }"
+              title="收藏"
               @click="player.toggleFavorite(track)"
             >
               ★
             </button>
-            <button type="button" class="cloud-btn" :disabled="cloudBusy === track.id" @click="uploadToCloud(track)">
-              {{ cloudBusy === track.id ? '上传中…' : '传到云端' }}
+            <button
+              type="button"
+              class="mini-act"
+              :disabled="cloudBusy === track.id"
+              title="传到云端"
+              @click="uploadToCloud(track)"
+            >
+              ↑
             </button>
-            <button type="button" class="del" @click="removeLocal(track.id)">删除</button>
+            <button type="button" class="mini-act danger" title="删除" @click="removeLocal(track.id)">×</button>
           </template>
-        </li>
-      </ol>
+        </template>
+      </RecordWall>
       <p v-else class="empty">还没有本地音乐。导入几首，退出浏览器也还在。</p>
     </section>
 
@@ -673,54 +633,41 @@ onMounted(() => {
       <p v-if="message" class="notice">{{ message }}</p>
       <p v-if="cloudError" class="notice">{{ cloudError }}</p>
       <p v-if="cloudLoading" class="muted small">加载中…</p>
-      <ol v-else-if="cloudList.length" class="track-list">
-        <li
-          v-for="(track, index) in cloudList"
-          :key="track.id"
-          :class="{
-            playing: isCurrent(track),
-            selected: selectMode && isSelected(cloudTracks[index]?.id ?? ''),
-          }"
-          :title="selectMode && cloudDeletable(cloudTracks[index]) ? '点击选中' : '双击播放 / 暂停'"
-          @click="onCloudRowClick($event, index)"
-          @dblclick="!selectMode && player.toggleAt(cloudList, index)"
-        >
-          <label v-if="selectMode && cloudDeletable(cloudTracks[index])" class="sel" @click.stop>
-            <input
-              type="checkbox"
-              :checked="isSelected(cloudTracks[index]?.id ?? '')"
-              @change="toggleSelect(cloudTracks[index]!.id)"
-            />
-          </label>
-          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
-          <div class="t-main">
-            <b>{{ track.title }}</b>
-            <span>{{ cloudTracks[index]?.owner.displayName }} · {{ formatSize(cloudTracks[index]?.size ?? 0) }}</span>
-          </div>
+      <RecordWall
+        v-else-if="cloudList.length"
+        :tracks="cloudList"
+        :current-id="player.current?.id"
+        :playing="player.playing"
+        :select-mode="selectMode"
+        :selected-ids="selected"
+        :selectable="(_track, index) => cloudDeletable(cloudTracks[index])"
+        @play="(index) => playFrom(cloudList, index)"
+        @select="toggleSelect"
+      >
+        <template #actions="{ index }">
           <template v-if="!selectMode">
-            <button type="button" class="play" @click="playFrom(cloudList, index)">
-              {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
-            </button>
             <button
               type="button"
-              class="cloud-btn"
+              class="mini-act"
               :disabled="cloudBusy === cloudTracks[index]?.id"
               title="下载到本地（本地已有同文件会跳过）"
               @click="cloudTracks[index] && downloadToLocal(cloudTracks[index]!)"
             >
-              {{ cloudBusy === cloudTracks[index]?.id ? '下载中…' : '下载' }}
+              ↓
             </button>
             <button
               v-if="cloudDeletable(cloudTracks[index])"
               type="button"
-              class="del"
+              class="mini-act danger"
+              title="删除"
               @click="removeCloud(cloudTracks[index]!)"
             >
-              删除
+              ×
             </button>
+            <span class="mini-meta">{{ formatSize(cloudTracks[index]?.size ?? 0) }}</span>
           </template>
-        </li>
-      </ol>
+        </template>
+      </RecordWall>
       <p v-else class="empty">云端还没有音乐。把「本地音乐」里的歌传到云端，别人也能听。</p>
     </section>
 
@@ -743,26 +690,17 @@ onMounted(() => {
           </button>
         </div>
       </div>
-      <ol v-if="player.favorites.length" class="track-list">
-        <li
-          v-for="(track, index) in player.favorites"
-          :key="track.id"
-          :class="{ playing: isCurrent(track) }"
-          title="双击播放 / 暂停"
-          @dblclick="player.toggleAt(player.favorites, index)"
-          @click="onRowClick($event, player.favorites, index, track.id)"
-        >
-          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
-          <div class="t-main">
-            <b>{{ track.title }}</b>
-            <span>{{ track.artist || (track.local ? '本地文件' : '') }}</span>
-          </div>
-          <button type="button" class="play" @click="playFrom(player.favorites, index)">
-            {{ isCurrent(track) && player.playing ? '暂停' : '播放' }}
-          </button>
-          <button type="button" class="star on" @click="player.toggleFavorite(track)">★</button>
-        </li>
-      </ol>
+      <RecordWall
+        v-if="player.favorites.length"
+        :tracks="player.favorites"
+        :current-id="player.current?.id"
+        :playing="player.playing"
+        @play="(index) => playFrom(player.favorites, index)"
+      >
+        <template #actions="{ track }">
+          <button type="button" class="mini-act on" title="取消收藏" @click="player.toggleFavorite(track)">★</button>
+        </template>
+      </RecordWall>
       <p v-else class="empty">还没有收藏。榜单或搜索里点 ★ 加进来。</p>
     </section>
 
@@ -793,6 +731,9 @@ onMounted(() => {
         <a class="btn" href="https://www.douyin.com/hot" target="_blank" rel="noopener noreferrer">抖音热榜</a>
       </div>
     </section>
+
+      </div>
+    </div>
 
     <BatchBar
       v-if="selectMode"
@@ -999,9 +940,69 @@ onMounted(() => {
   margin-top: 14px;
 }
 
-/* 批量管理选中态 */
-.track-list li.selected {
-  background: color-mix(in oklab, var(--accent, #38bdf8) 12%, transparent);
+/* 唱片机 + 唱片墙 两栏 */
+.music-stage {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.stage-left {
+  position: sticky;
+  top: 84px;
+}
+.stage-left .tt-wrap {
+  margin: 0;
+}
+.stage-right {
+  min-width: 0;
+}
+
+@media (max-width: 980px) {
+  .music-stage {
+    grid-template-columns: 1fr;
+  }
+  .stage-left {
+    position: static;
+  }
+}
+
+/* 唱片上的小操作按钮（悬停显示） */
+.mini-act {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #d7e2ec;
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.record:hover .mini-act,
+.record:focus-within .mini-act {
+  opacity: 1;
+}
+.mini-act:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.mini-act.on {
+  color: #ffd166;
+  border-color: rgba(255, 209, 102, 0.45);
+}
+.mini-act.danger:hover {
+  background: rgba(226, 87, 76, 0.35);
+  border-color: rgba(226, 87, 76, 0.6);
+}
+.mini-meta {
+  font-size: 0.66rem;
+  opacity: 0.5;
+  align-self: center;
+  width: 100%;
+  text-align: center;
 }
 
 /* 行内小唱片：当前曲目旋转 */
