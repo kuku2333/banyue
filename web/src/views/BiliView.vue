@@ -63,6 +63,7 @@ const extracting = ref(false)
 const trimSrc = ref('')
 const trimTitle = ref('')
 const trimKey = ref(0)
+const useCover = ref(true)
 const savingLocal = ref(false)
 const savingCloud = ref(false)
 const saveMessage = ref('')
@@ -260,6 +261,39 @@ async function fetchAudioWithRefresh(): Promise<Blob> {
   }
 }
 
+/** 把视频封面压成小图 dataURL（320px，约 30KB），用于唱片封面 */
+async function compressCover(url: string): Promise<string> {
+  try {
+    const response = await fetch(url)
+    if (!response.ok) return ''
+    const blob = await response.blob()
+    const bitmap = await createImageBitmap(blob)
+    const size = 240
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return ''
+    // 居中裁成正方形
+    const side = Math.min(bitmap.width, bitmap.height)
+    const sx = (bitmap.width - side) / 2
+    const sy = (bitmap.height - side) / 2
+    ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size)
+    bitmap.close?.()
+    return canvas.toDataURL('image/jpeg', 0.8)
+  } catch {
+    return ''
+  }
+}
+
+/** 当前选择是否带封面（勾选了才去压图） */
+async function currentCover(): Promise<string> {
+  if (!useCover.value) return ''
+  const info = video.value
+  if (!info?.cover) return ''
+  return compressCover(`/api/bilibili/cover?url=${encodeURIComponent(info.cover)}`)
+}
+
 /** 音频的标题与艺人（分P 时用「标题 - 分P」） */
 const trackName = computed(() => {
   const info = video.value
@@ -280,8 +314,12 @@ async function saveToLocal(): Promise<void> {
     const blob = await fetchAudioWithRefresh()
     const buffer = await blob.arrayBuffer()
     const hash = await fingerprint(buffer, `${trackName.value}-${blob.size}`)
-    if (await findTrackByHash(hash)) {
-      flash('本地音乐里已有这首，跳过')
+    const existing = await findTrackByHash(hash)
+    const cover = await currentCover()
+    if (existing) {
+      // 之前没封面、这次勾选了就补上，不重复占空间
+      if (cover && !existing.cover) await addTrack({ ...existing, cover })
+      flash(cover && !existing.cover ? '本地已有这首，已补上封面' : '本地音乐里已有这首，跳过')
       return
     }
     await addTrack({
@@ -292,8 +330,9 @@ async function saveToLocal(): Promise<void> {
       hash,
       createdAt: Date.now(),
       data: blob,
+      cover,
     })
-    flash(`已保存到本地音乐：《${trackName.value}》`)
+    flash(`已保存到本地音乐：《${trackName.value}》${cover ? '（含封面）' : ''}`)
   } catch (err) {
     flash((err as Error).message || '保存到本地失败', true)
   } finally {
@@ -316,21 +355,30 @@ async function saveToCloud(): Promise<void> {
     const blob = await fetchAudioWithRefresh()
     const buffer = await blob.arrayBuffer()
     const hash = await fingerprint(buffer, `${trackName.value}-${blob.size}`)
-    // 先查云端指纹：命中就不必再传一份（省流量，也避免大文件上传失败）
+    // 云端已有同指纹：只补封面（不重复传 5MB 音频）
     try {
       const existing = await listAssets('track')
-      if (existing.some((asset) => asset.hash && asset.hash === hash)) {
-        flash('云端已有这首，跳过')
+      const same = existing.find((asset) => asset.hash && asset.hash === hash)
+      if (same) {
+        const cover = await currentCover()
+        if (cover && !same.cover) {
+          await api(`/api/assets/${encodeURIComponent(same.id)}/cover`, { method: 'POST', body: { cover } })
+          flash('云端已有这首，已补上封面')
+        } else {
+          flash('云端已有这首，跳过')
+        }
         return
       }
     } catch {
-      /* 查不到就让服务端去判重 */
+      /* 查不到就让服务端判重 */
     }
+    const cover = await currentCover()
     const result = await uploadAsset('track', blob, {
       title: trackName.value,
       subtitle: video.value?.owner ?? '',
       filename: `${trackName.value}.m4a`,
       hash,
+      cover,
     })
     flash(result.duplicate ? '云端已有这首，跳过' : `已上传到云端：《${trackName.value}》`)
   } catch (err) {
@@ -487,6 +535,16 @@ async function saveToCloud(): Promise<void> {
               {{ savingCloud ? '上传中…' : '保存到云端音乐' }}
             </button>
           </div>
+          <label class="cover-check">
+            <input v-model="useCover" type="checkbox" />
+            用视频封面作为唱片封面
+            <img
+              v-if="useCover && video"
+              class="cover-preview"
+              :src="`/api/bilibili/cover?url=${encodeURIComponent(video.cover)}`"
+              alt=""
+            />
+          </label>
           <p v-if="saveMessage" class="save-msg">{{ saveMessage }}</p>
           <p v-if="saveError" class="save-err">{{ saveError }}</p>
           <p v-if="!auth.loggedIn" class="muted small">保存到云端需要先登录（右上角「登录」）。</p>
@@ -634,6 +692,28 @@ a.btn {
   margin: 10px 0 0;
   color: #ff7b72;
   font-size: 0.82rem;
+}
+.cover-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  opacity: 0.9;
+  cursor: pointer;
+}
+.cover-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #4cc2ff;
+  cursor: pointer;
+}
+.cover-preview {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 1px solid var(--line-strong);
 }
 
 @media (max-width: 700px) {

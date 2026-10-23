@@ -126,6 +126,11 @@ BANYUE_FILES_DIR=/path/files node src/index.mjs   # 上传文件目录（默认 
 | POST | `/api/playlists/:id/hide` | 隐藏别人的公开歌单（只影响自己的列表） |
 | DELETE | `/api/playlists/:id/hide` | 取消隐藏 |
 | GET | `/api/playlists-hidden` | 我隐藏的歌单（用于恢复显示） |
+| POST | `/api/assets/:id/cover` | 设/清唱片封面：`{cover}` 为 dataURL，空字符串表示清空 |
+
+要点补充：**封面单独走接口**，不能塞进上传请求头（Node header 上限 16KB，会 431）；
+这个接口的 body 上限放宽到 512KB（普通 JSON 仍是 64KB）。封面统一压成
+240px JPEG dataURL（约 20KB）存在 `assets.cover`，云端判重命中时只补封面、不重传音频。
 
 要点：
 

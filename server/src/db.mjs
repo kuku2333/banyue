@@ -156,6 +156,12 @@ if (!assetColumns.has('hash')) {
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_assets_hash ON assets(owner_id, kind, hash)')
 
+/* 老库补列：封面（dataURL，可选） */
+const assetCols2 = new Set(db.prepare('PRAGMA table_info(assets)').all().map((column) => column.name))
+if (!assetCols2.has('cover')) {
+  db.exec('ALTER TABLE assets ADD COLUMN cover TEXT NOT NULL DEFAULT \'\'')
+}
+
 /* 环境变量里列出的用户名自动成为管理员 */
 const admins = (process.env.BANYUE_ADMINS ?? '')
   .split(',')

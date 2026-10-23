@@ -106,12 +106,12 @@ function safeDecode(value) {
   }
 }
 
-async function readBody(req) {
+async function readBody(req, limit = MAX_BODY) {
   let size = 0
   const chunks = []
   for await (const chunk of req) {
     size += chunk.length
-    if (size > MAX_BODY) throw new Error('body too large')
+    if (size > limit) throw new Error('body too large')
     chunks.push(chunk)
   }
   if (!chunks.length) return {}
@@ -813,7 +813,7 @@ route('GET', '/api/storage', async (req, res) => {
 route('GET', '/api/assets', async (req, res, _params, url) => {
   const kind = url.searchParams.get('kind') === 'track' ? 'track' : 'book'
   const list = rows(
-    `SELECT a.id, a.kind, a.title, a.subtitle, a.size, a.mime, a.hash, a.created_at, u.username, u.display_name
+    `SELECT a.id, a.kind, a.title, a.subtitle, a.size, a.mime, a.hash, a.cover, a.created_at, u.username, u.display_name
      FROM assets a JOIN users u ON u.id = a.owner_id
      WHERE a.kind = ? ORDER BY a.created_at DESC LIMIT 300`,
     [kind],
@@ -828,6 +828,7 @@ route('GET', '/api/assets', async (req, res, _params, url) => {
       size: item.size,
       mime: item.mime,
       hash: item.hash ?? '',
+      cover: item.cover ?? '',
       createdAt: item.created_at,
       owner: { username: item.username, displayName: item.display_name },
       mine: user?.username === item.username,
@@ -859,10 +860,17 @@ route('POST', '/api/assets', async (req, res, _params, url) => {
   if (!title) return fail(res, 400, '缺少标题')
 
   const hash = (safeDecode(String(req.headers['x-hash'] ?? '')) ?? '').trim().slice(0, 64)
+  // 可选封面：前端压成小图 dataURL 传过来（限制体积，避免被当图床）
+  const coverRaw = (safeDecode(String(req.headers['x-cover'] ?? '')) ?? '').trim()
+  const cover = /^data:image\/(jpeg|png|webp);base64,/i.test(coverRaw) && coverRaw.length <= 600_000 ? coverRaw : ''
   // 同一用户上传过同一内容指纹的，直接跳过，不再落盘、不占配额
   if (hash) {
-    const existed = row('SELECT id FROM assets WHERE owner_id = ? AND kind = ? AND hash = ?', [user.id, kind, hash])
-    if (existed) return send(res, 200, { duplicate: true, id: existed.id })
+    const existed = row('SELECT id, cover FROM assets WHERE owner_id = ? AND kind = ? AND hash = ?', [user.id, kind, hash])
+    if (existed) {
+      // 之前没封面、这次带了，就补上（不重复占空间，也符合「勾选封面」的预期）
+      if (cover && !existed.cover) run('UPDATE assets SET cover = ? WHERE id = ?', [cover, existed.id])
+      return send(res, 200, { duplicate: true, id: existed.id })
+    }
   }
 
   const mime = uploadMime(kind, req.headers['content-type'])
@@ -919,8 +927,8 @@ route('POST', '/api/assets', async (req, res, _params, url) => {
   }
 
   run(
-    'INSERT INTO assets (id, owner_id, kind, title, subtitle, size, mime, stored_name, hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, user.id, kind, title, subtitle, written, mime, storedName, finalHash, Date.now()],
+    'INSERT INTO assets (id, owner_id, kind, title, subtitle, size, mime, stored_name, hash, cover, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, user.id, kind, title, subtitle, written, mime, storedName, finalHash, cover, Date.now()],
   )
   send(res, 201, { id, size: written })
 })
@@ -1111,6 +1119,28 @@ route('GET', '/api/bilibili/cover', async (req, res, _params, url) => {
   } catch (error) {
     fail(res, 502, error.message)
   }
+})
+
+/** 单独设封面：dataURL 体积大，放 body 而不是请求头（header 有 16KB 上限） */
+route('POST', '/api/assets/:id/cover', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const asset = row('SELECT owner_id FROM assets WHERE id = ?', [params.id])
+  if (!asset) return fail(res, 404, '文件不存在')
+  if (!canManage(user, asset.owner_id)) return fail(res, 403, '只能改自己上传的文件')
+  // 封面是 dataURL，比普通 JSON 大得多
+  let body
+  try {
+    body = await readBody(req, 512 * 1024)
+  } catch {
+    return fail(res, 413, '封面太大了（超过 512KB）')
+  }
+  const cover = String(body.cover ?? '').trim()
+  // 空字符串表示清空封面
+  if (cover && !/^data:image\/(jpeg|png|webp);base64,/i.test(cover)) return fail(res, 400, '封面格式不对')
+  if (cover.length > 600_000) return fail(res, 413, '封面太大了')
+  run('UPDATE assets SET cover = ? WHERE id = ?', [cover, params.id])
+  send(res, 200, { ok: true })
 })
 
 /** 下载地址：给出建议文件名（前端用 <a download> 触发保存） */

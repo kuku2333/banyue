@@ -8,6 +8,7 @@ export interface CloudAsset {
   size: number
   mime: string
   hash: string
+  cover: string
   createdAt: number
   owner: { username: string; displayName: string }
   mine: boolean
@@ -43,7 +44,7 @@ export interface UploadResult {
 export async function uploadAsset(
   kind: 'book' | 'track',
   blob: Blob,
-  meta: { title: string; subtitle?: string; filename?: string; hash?: string },
+  meta: { title: string; subtitle?: string; filename?: string; hash?: string; cover?: string },
 ): Promise<UploadResult> {
   const headers: Record<string, string> = {
     'content-type': blob.type || 'application/octet-stream',
@@ -53,22 +54,39 @@ export async function uploadAsset(
   }
   if (meta.hash) headers['x-hash'] = encodeURIComponent(meta.hash)
 
-  let response: Response
-  try {
-    response = await fetch(`/api/assets?kind=${kind}`, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers,
-      body: blob,
-    })
-  } catch {
-    // 大文件上传时网络中断/代理断开，别把 "Failed to fetch" 抛给用户
-    throw new Error('上传中断了，检查网络后重试')
+  let response: Response | null = null
+  for (let attempt = 0; attempt < 2 && !response; attempt++) {
+    try {
+      response = await fetch(`/api/assets?kind=${kind}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers,
+        body: blob,
+      })
+    } catch (error) {
+      // 大文件上传时网络中断/代理断开，重试一次再放弃
+      console.warn('[upload] attempt failed', error)
+      if (attempt === 1) {
+        const detail = error instanceof Error ? error.message : String(error)
+        throw new Error(`上传中断了：${detail}`)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 800))
+    }
   }
+  if (!response) throw new Error('上传中断了，检查网络后重试')
   const text = await response.text()
   const data = text ? (JSON.parse(text) as { id?: string; duplicate?: boolean; error?: string }) : {}
   if (!response.ok) throw new Error(data.error ?? `上传失败（${response.status}）`)
-  return { id: data.id ?? '', duplicate: Boolean(data.duplicate) }
+  const id = data.id ?? ''
+  // 封面体积大，单独走接口（请求头有 16KB 限制）
+  if (id && meta.cover) {
+    try {
+      await api(`/api/assets/${encodeURIComponent(id)}/cover`, { method: 'POST', body: { cover: meta.cover } })
+    } catch {
+      /* 封面失败不影响音频保存 */
+    }
+  }
+  return { id, duplicate: Boolean(data.duplicate) }
 }
 
 export async function deleteAsset(id: string): Promise<void> {

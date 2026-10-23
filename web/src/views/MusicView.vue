@@ -62,6 +62,7 @@ const cloudList = computed<Track[]>(() =>
     previewUrl: assetUrl(asset.id),
     // 带上指纹：本地若已有同一首，播放时优先走本地
     hash: asset.hash,
+    art: asset.cover || undefined,
   })),
 )
 
@@ -304,6 +305,7 @@ const localTracks = computed<Track[]>(() =>
     source: 'local' as const,
     local: true,
     hash: item.hash,
+    art: item.cover || undefined,
   })),
 )
 

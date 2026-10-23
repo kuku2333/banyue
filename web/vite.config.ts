@@ -22,6 +22,9 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8787',
         changeOrigin: false,
+        // 上传大文件（音频/视频）时别让代理先超时
+        timeout: 300_000,
+        proxyTimeout: 300_000,
       },
     },
   },

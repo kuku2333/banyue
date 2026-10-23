@@ -30,6 +30,8 @@ export interface TrackRecord {
   hash: string
   createdAt: number
   data?: Blob
+  /** 唱片封面（dataURL，可选） */
+  cover?: string
 }
 
 export interface DraftRecord {

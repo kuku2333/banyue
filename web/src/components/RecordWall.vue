@@ -67,7 +67,8 @@ const isCurrent = (track: Track): boolean => props.currentId === track.id
         <div class="disc-grooves" />
         <div class="disc-shine" />
         <div class="disc-label" :style="labelStyle(track)">
-          <span class="disc-name">{{ track.title }}</span>
+          <img v-if="track.art" class="disc-cover" :src="track.art" alt="" loading="lazy" />
+          <span v-else class="disc-name">{{ track.title }}</span>
         </div>
         <div class="disc-spindle" />
         <span v-if="props.selectMode && isSelected(track.id)" class="disc-check">✓</span>
@@ -177,6 +178,12 @@ const isCurrent = (track: Track): boolean => props.currentId === track.id
   place-items: center;
   padding: 4px;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+.disc-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 .disc-name {
   display: -webkit-box;
