@@ -5,18 +5,17 @@ import { useAuthStore } from '@/stores/auth'
 import { REGIONS, fetchTopSongs, fingerprint, isAudioFile, searchSongs, type Region, type Track } from '@/lib/music'
 import { addTrack, deleteTrack, findTrackByHash, getTrackBlob, listTracks, type TrackRecord } from '@/lib/db'
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, syncTracksToCloud, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
-import { BILI_HOT, BILI_SNAP } from '@/lib/bili'
-import { formatCount } from '@/lib/format'
 import BatchBar from '@/components/BatchBar.vue'
 import Turntable from '@/components/Turntable.vue'
 import RecordWall from '@/components/RecordWall.vue'
 import PlaylistPanel from '@/components/PlaylistPanel.vue'
+import PlaylistPicker from '@/components/PlaylistPicker.vue'
 
-type Tab = 'charts' | 'search' | 'local' | 'cloud' | 'playlists' | 'favs' | 'bili' | 'douyin'
+type Tab = 'local' | 'cloud' | 'charts' | 'search' | 'playlists' | 'favs'
 
 const player = usePlayerStore()
 const auth = useAuthStore()
-const tab = ref<Tab>('charts')
+const tab = ref<Tab>('local')
 const region = ref<Region['id']>('hk')
 const charts = ref<Track[]>([])
 const chartsLoading = ref(false)
@@ -33,14 +32,12 @@ const message = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'charts', label: '榜单' },
-  { id: 'search', label: '搜索' },
   { id: 'local', label: '本地音乐' },
   { id: 'cloud', label: '云端音乐' },
+  { id: 'charts', label: '榜单' },
+  { id: 'search', label: '搜索' },
   { id: 'playlists', label: '歌单' },
   { id: 'favs', label: '收藏' },
-  { id: 'bili', label: 'B站' },
-  { id: 'douyin', label: '抖音' },
 ]
 
 const cloudTracks = ref<CloudAsset[]>([])
@@ -413,6 +410,21 @@ function isCurrent(track: Track): boolean {
   return player.current?.id === track.id
 }
 
+/* 加歌单：★ 按钮统一走歌单选择器 */
+const pickerOpen = ref(false)
+const pickerTrack = ref<Track | null>(null)
+
+function openPicker(track: Track): void {
+  pickerTrack.value = track
+  pickerOpen.value = true
+}
+
+/** 云端曲 id 形如 cloud-<assetId>，拆出来给歌单条目用 */
+function assetIdOf(track: Track | null): string {
+  if (!track) return ''
+  return track.id.startsWith('cloud-') ? track.id.slice(6) : ''
+}
+
 onMounted(() => {
   void loadCharts()
   void refreshLocal()
@@ -481,8 +493,9 @@ onMounted(() => {
             type="button"
             class="mini-act"
             :class="{ on: player.isFavorite(track.id) }"
-            :aria-label="player.isFavorite(track.id) ? '取消收藏' : '收藏'"
-            @click="player.toggleFavorite(track)"
+            aria-label="加入歌单"
+            title="加入歌单"
+            @click="openPicker(track)"
           >
             ★
           </button>
@@ -521,8 +534,9 @@ onMounted(() => {
             type="button"
             class="mini-act"
             :class="{ on: player.isFavorite(track.id) }"
-            :aria-label="player.isFavorite(track.id) ? '取消收藏' : '收藏'"
-            @click="player.toggleFavorite(track)"
+            aria-label="加入歌单"
+            title="加入歌单"
+            @click="openPicker(track)"
           >
             ★
           </button>
@@ -578,8 +592,8 @@ onMounted(() => {
               type="button"
               class="mini-act"
               :class="{ on: player.isFavorite(track.id) }"
-              title="收藏"
-              @click="player.toggleFavorite(track)"
+              title="加入歌单"
+              @click="openPicker(track)"
             >
               ★
             </button>
@@ -650,8 +664,16 @@ onMounted(() => {
         @play="(index) => playFrom(cloudList, index)"
         @select="toggleSelect"
       >
-        <template #actions="{ index }">
+        <template #actions="{ track, index }">
           <template v-if="!selectMode">
+            <button
+              type="button"
+              class="mini-act"
+              title="加入歌单"
+              @click="openPicker(track)"
+            >
+              ★
+            </button>
             <button
               type="button"
               class="mini-act"
@@ -715,36 +737,17 @@ onMounted(() => {
       <p v-else class="empty">还没有收藏。榜单或搜索里点 ★ 加进来。</p>
     </section>
 
-    <!-- B 站 -->
-    <section v-else-if="tab === 'bili'" class="panel">
-      <p class="muted small">
-        B 站音乐区排行快照（{{ BILI_SNAP }}）。浏览器端拿不到实时接口，点开是原视频页面。
-      </p>
-      <ol class="track-list">
-        <li v-for="item in BILI_HOT" :key="item.rank">
-          <span class="num">{{ String(item.rank).padStart(2, '0') }}</span>
-          <div class="t-main">
-            <b>{{ item.title }}</b>
-            <span>{{ item.up }} · {{ formatCount(item.view) }} 播放</span>
-          </div>
-          <a class="play" :href="item.url" target="_blank" rel="noopener noreferrer">去看</a>
-        </li>
-      </ol>
-    </section>
-
-    <!-- 抖音 -->
-    <section v-else class="panel">
-      <p class="muted small">
-        抖音没有可跨域读取的音乐榜接口，所以这里只放两个直达入口。想听完整版就导入自己的文件。
-      </p>
-      <div class="douyin-links">
-        <a class="btn" href="https://music.douyin.com/" target="_blank" rel="noopener noreferrer">抖音音乐榜</a>
-        <a class="btn" href="https://www.douyin.com/hot" target="_blank" rel="noopener noreferrer">抖音热榜</a>
-      </div>
-    </section>
-
       </div>
     </div>
+
+    <PlaylistPicker
+      :open="pickerOpen"
+      :track-title="pickerTrack?.title ?? ''"
+      :track-artist="pickerTrack?.artist ?? ''"
+      :track-hash="pickerTrack?.hash ?? ''"
+      :track-asset-id="assetIdOf(pickerTrack)"
+      @update:open="pickerOpen = $event"
+    />
 
     <BatchBar
       v-if="selectMode"
@@ -945,11 +948,6 @@ onMounted(() => {
   font-size: 0.82rem;
 }
 
-.douyin-links {
-  display: flex;
-  gap: 10px;
-  margin-top: 14px;
-}
 
 /* 唱片机 + 唱片墙 两栏 */
 .music-stage {

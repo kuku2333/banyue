@@ -66,7 +66,6 @@ function onTap(): void {
 
     <!-- 信息（播放控制交给悬浮播放器，这里不重复） -->
     <div class="tt-info">
-      <span class="tt-now">{{ current ? (player.playing ? '正在播放' : '已暂停') : '唱机待命' }}</span>
       <h3 class="tt-title">{{ current?.title ?? '点一张唱片放上来' }}</h3>
       <p class="tt-artist">{{ current?.artist ?? '唱片墙上的任意一张都行' }}</p>
       <p v-if="player.error" class="tt-error">{{ player.error }}</p>
@@ -103,11 +102,7 @@ function onTap(): void {
   outline: 2px solid #4cc2ff;
   outline-offset: 3px;
 }
-/* 悬停时提示可点 */
-.turntable.clickable .tt-now::after {
-  content: ' · 点这里播放/暂停';
-  opacity: 0.7;
-}
+
 
 /* ---------- 唱盘 ---------- */
 .tt-deck {
@@ -254,20 +249,8 @@ function onTap(): void {
   flex: 1;
   min-width: 0;
 }
-.tt-now {
-  display: inline-block;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: rgba(76, 194, 255, 0.12);
-  color: #4cc2ff;
-  font-size: 0.72rem;
-}
-.spinning .tt-now {
-  background: rgba(255, 94, 120, 0.14);
-  color: #ff5e78;
-}
 .tt-title {
-  margin: 8px 0 2px;
+  margin: 0 0 2px;
   font-size: 1.25rem;
   white-space: nowrap;
   overflow: hidden;

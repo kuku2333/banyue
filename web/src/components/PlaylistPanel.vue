@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { listTracks } from '@/lib/db'
+import { listAssets } from '@/lib/cloud'
 import {
   addPlaylistItem,
   createPlaylist,
@@ -34,6 +36,76 @@ const newPublic = ref(false)
 
 const addTitle = ref('')
 const addArtist = ref('')
+
+/** 可加入歌单的歌曲：本地音乐 + 云端音乐 */
+interface PickableTrack {
+  key: string
+  title: string
+  artist: string
+  hash: string
+  assetId: string
+  where: '本地' | '云端'
+}
+const pickables = ref<PickableTrack[]>([])
+const pickLoading = ref(false)
+const showPickable = ref(false)
+
+async function loadPickables(): Promise<void> {
+  pickLoading.value = true
+  try {
+    const [locals, clouds] = await Promise.all([
+      listTracks().catch(() => []),
+      listAssets('track').catch(() => []),
+    ])
+    const seen = new Set<string>()
+    const rows: PickableTrack[] = []
+    for (const item of locals) {
+      const key = item.hash || item.id
+      if (seen.has(key)) continue
+      seen.add(key)
+      rows.push({ key, title: item.title, artist: item.artist, hash: item.hash, assetId: '', where: '本地' })
+    }
+    for (const item of clouds) {
+      const key = item.hash || item.id
+      if (seen.has(key)) continue
+      seen.add(key)
+      rows.push({
+        key,
+        title: item.title,
+        artist: item.subtitle,
+        hash: item.hash,
+        assetId: item.id,
+        where: '云端',
+      })
+    }
+    pickables.value = rows
+  } finally {
+    pickLoading.value = false
+  }
+}
+
+async function addPickable(item: PickableTrack): Promise<void> {
+  const current = detail.value
+  if (!current || busy.value) return
+  busy.value = true
+  error.value = ''
+  try {
+    await addPlaylistItem(current.id, {
+      title: item.title,
+      artist: item.artist,
+      key: item.key,
+      hash: item.hash,
+      assetId: item.assetId,
+    })
+    await openPlaylist(current.id)
+    await load()
+    flash(`《${item.title}》已加入《${current.name}》`)
+  } catch (err) {
+    error.value = (err as Error).message
+  } finally {
+    busy.value = false
+  }
+}
 
 const mine = computed(() => playlists.value.filter((item) => item.mine))
 const others = computed(() => playlists.value.filter((item) => !item.mine))
@@ -303,8 +375,27 @@ defineExpose({ reload: load })
       <form v-if="detail.mine" class="add-form" @submit.prevent="addItem">
         <input v-model="addTitle" placeholder="歌名" required maxlength="120" />
         <input v-model="addArtist" placeholder="歌手（可选）" maxlength="80" />
-        <button type="submit" class="btn" :disabled="busy || !addTitle.trim()">加入歌单</button>
+        <button type="submit" class="btn" :disabled="busy || !addTitle.trim()">手动加入</button>
+        <button type="button" class="btn" @click="showPickable = !showPickable; if (showPickable && !pickables.length) loadPickables()">
+          {{ showPickable ? '收起音乐列表' : '从我的音乐选' }}
+        </button>
       </form>
+
+      <div v-if="detail.mine && showPickable" class="pickable">
+        <p v-if="pickLoading" class="muted small">读取本地与云端音乐…</p>
+        <template v-else>
+          <p v-if="!pickables.length" class="muted small">本地和云端都还没有音乐。</p>
+          <ul v-else>
+            <li v-for="item in pickables" :key="item.key">
+              <div class="pick-main">
+                <b>{{ item.title }}</b>
+                <span>{{ item.artist || '未知歌手' }} · {{ item.where }}</span>
+              </div>
+              <button type="button" class="mini" :disabled="busy" @click="addPickable(item)">加入</button>
+            </li>
+          </ul>
+        </template>
+      </div>
     </section>
 
     <!-- 列表 -->
@@ -512,6 +603,44 @@ defineExpose({ reload: load })
   font-size: 0.76rem;
   opacity: 0.5;
   font-variant-numeric: tabular-nums;
+}
+.pickable {
+  margin: 10px 0 4px;
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.pickable ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pickable li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.pick-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pick-main b {
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pick-main span {
+  font-size: 0.72rem;
+  opacity: 0.6;
 }
 .hidden-block {
   margin-top: 20px;

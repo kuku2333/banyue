@@ -25,22 +25,16 @@ const tabs = [
     d: 'M4 4.5h6v15H4zM10 4.5h6v15h-6zM17.2 5.2l3 14.2',
   },
   {
-    to: '/archive',
-    name: 'archive',
-    label: '归档',
-    d: 'M4 4h16v4H4zM5 8v11h14V8M10 12h4',
-  },
-  {
-    to: '/tags',
-    name: 'tags',
-    label: '标签',
-    d: 'M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8zM7.5 7.5h.01',
-  },
-  {
     to: '/music',
     name: 'music',
     label: '听歌',
     d: 'M7 18a2.6 2.6 0 105.2 0V7.4l8-1.6v9.8',
+  },
+  {
+    to: '/bili',
+    name: 'bili',
+    label: '下载',
+    d: 'M12 4v11m0 0l-4-4m4 4l4-4M5 19h14',
   },
 ]
 </script>

@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { PLAY_MODES, usePlayerStore } from '@/stores/player'
-import CollectionPicker from '@/components/CollectionPicker.vue'
+import PlaylistPicker from '@/components/PlaylistPicker.vue'
 import CommentsPanel from '@/components/CommentsPanel.vue'
 import { formatTime } from '@/lib/music'
 import { hashCode } from '@/lib/cover'
@@ -479,10 +479,12 @@ onBeforeUnmount(() => {
     </span>
   </button>
 
-  <CollectionPicker
+  <PlaylistPicker
     :open="pickerOpen"
-    type="music"
-    :item="player.current ? { key: player.current.id, title: player.current.title, subtitle: player.current.artist } : null"
+    :track-title="player.current?.title ?? ''"
+    :track-artist="player.current?.artist ?? ''"
+    :track-hash="player.current?.hash ?? ''"
+    :track-asset-id="player.current?.id?.startsWith('cloud-') ? player.current.id.slice(6) : ''"
     @update:open="pickerOpen = $event"
   />
 
