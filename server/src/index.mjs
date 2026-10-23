@@ -1121,6 +1121,32 @@ route('GET', '/api/bilibili/cover', async (req, res, _params, url) => {
   }
 })
 
+/** 改云端文件的标题/歌手（仅作者或管理员） */
+route('PATCH', '/api/assets/:id', async (req, res, params) => {
+  const user = requireUser(req, res)
+  if (!user) return
+  const asset = row('SELECT owner_id FROM assets WHERE id = ?', [params.id])
+  if (!asset) return fail(res, 404, '文件不存在')
+  if (!canManage(user, asset.owner_id)) return fail(res, 403, '只能改自己上传的文件')
+  const body = await readBody(req)
+  const sets = []
+  const values = []
+  if (typeof body.title === 'string') {
+    const title = body.title.trim().slice(0, 120)
+    if (!title) return fail(res, 400, '标题不能为空')
+    sets.push('title = ?')
+    values.push(title)
+  }
+  if (typeof body.artist === 'string') {
+    sets.push('subtitle = ?')
+    values.push(body.artist.trim().slice(0, 120))
+  }
+  if (!sets.length) return fail(res, 400, '没有要改的内容')
+  values.push(params.id)
+  run(`UPDATE assets SET ${sets.join(', ')} WHERE id = ?`, values)
+  send(res, 200, { ok: true })
+})
+
 /** 单独设封面：dataURL 体积大，放 body 而不是请求头（header 有 16KB 上限） */
 route('POST', '/api/assets/:id/cover', async (req, res, params) => {
   const user = requireUser(req, res)

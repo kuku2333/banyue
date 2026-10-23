@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { usePlayerStore } from '@/stores/player'
 import {
   addPlaylistItem,
   createPlaylist,
@@ -19,7 +20,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const auth = useAuthStore()
-const DEFAULT_NAME = '我喜欢的音乐'
+const player = usePlayerStore()
 
 const mine = ref<PlaylistSummary[]>([])
 const loading = ref(false)
@@ -29,7 +30,10 @@ const message = ref('')
 const creating = ref(false)
 const newName = ref('')
 
-const defaultPlaylist = computed(() => mine.value.find((item) => item.name === DEFAULT_NAME))
+const alreadyFav = computed(() => {
+  const key = props.trackHash || props.trackAssetId || props.trackTitle
+  return player.isFavorite(key) || (player.current ? player.isFavorite(player.current.id) : false)
+})
 
 async function load(): Promise<void> {
   if (!auth.loggedIn) return
@@ -59,15 +63,6 @@ watch(
   },
 )
 
-/** 确保有一个默认收藏歌单 */
-async function ensureDefault(): Promise<string> {
-  const existing = defaultPlaylist.value
-  if (existing) return existing.id
-  const id = await createPlaylist({ name: DEFAULT_NAME, description: '点收藏时自动加到这里' })
-  await load()
-  return id
-}
-
 async function addTo(playlistId: string): Promise<void> {
   if (busy.value) return
   busy.value = true
@@ -89,19 +84,27 @@ async function addTo(playlistId: string): Promise<void> {
   }
 }
 
-/** 点「收藏」= 加进默认收藏歌单 */
-async function addToDefault(): Promise<void> {
-  if (busy.value) return
-  busy.value = true
-  error.value = ''
-  try {
-    const id = await ensureDefault()
-    await addTo(id)
-  } catch (err) {
-    error.value = (err as Error).message
-  } finally {
-    busy.value = false
+/** 默认动作：加入「收藏」（音乐页的收藏标签，不用另建歌单） */
+function addToFavorites(): void {
+  const track = player.current
+  const target =
+    track && track.title === props.trackTitle
+      ? track
+      : {
+          id: props.trackHash || props.trackAssetId || props.trackTitle,
+          title: props.trackTitle,
+          artist: props.trackArtist ?? '',
+          source: 'local' as const,
+          hash: props.trackHash,
+        }
+  if (player.isFavorite(target.id)) {
+    message.value = '已经在收藏里了'
+    setTimeout(() => emit('update:open', false), 700)
+    return
   }
+  player.toggleFavorite(target)
+  message.value = '已加入收藏'
+  setTimeout(() => emit('update:open', false), 700)
 }
 
 async function submitCreate(): Promise<void> {
@@ -144,8 +147,8 @@ function close(): void {
         <p v-if="!auth.loggedIn" class="muted">歌单存在云端，先登录才能加进去。</p>
 
         <template v-else>
-          <button type="button" class="fav btn-primary" :disabled="busy" @click="addToDefault">
-            ♥ 收藏到「{{ DEFAULT_NAME }}」
+          <button type="button" class="fav" :disabled="alreadyFav" @click="addToFavorites">
+            {{ alreadyFav ? '♥ 已在收藏里' : '♥ 加入收藏' }}
           </button>
 
           <p v-if="loading" class="muted small">加载歌单…</p>

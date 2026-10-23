@@ -282,32 +282,6 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
       </p>
     </div>
 
-    <div
-      class="dropzone"
-      :class="{ dragging }"
-      @dragover.prevent="dragging = true"
-      @dragleave.prevent="dragging = false"
-      @drop.prevent="onDrop"
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 16V4m0 0L7 9m5-5l5 5" />
-        <path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3" />
-      </svg>
-      <b>把 TXT / Markdown 拖进来</b>
-      <span class="muted">或者</span>
-      <button type="button" class="btn" :disabled="busy" @click="inputRef?.click()">选择文件</button>
-      <button
-        v-if="shelf.books.length"
-        type="button"
-        class="btn"
-        :class="{ on: selectMode === 'shelf' }"
-        @click="selectMode === 'shelf' ? exitSelectMode() : enterSelectMode('shelf')"
-      >
-        {{ selectMode === 'shelf' ? '完成' : '批量管理' }}
-      </button>
-      <input id="shelf-file-input" ref="inputRef" type="file" accept=".txt,.md,.markdown,text/plain" multiple hidden @change="onPick" />
-      <p class="muted small">自动识别 UTF-8 / GBK，按「第 X 章」切分，识别不到就按字数切节。</p>
-    </div>
 
     <p v-if="message" class="notice">{{ message }}</p>
 
@@ -364,6 +338,27 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
           </button>
         </template>
       </article>
+    </div>
+
+    <div
+      class="dropzone compact"
+      :class="{ dragging }"
+      @dragover.prevent="dragging = true"
+      @dragleave.prevent="dragging = false"
+      @drop.prevent="onDrop"
+    >
+      <span class="dz-text">导入本地书（TXT / Markdown，自动识别编码与章节）</span>
+      <button type="button" class="btn small-btn" :disabled="busy" @click="inputRef?.click()">{{ busy ? '导入中…' : '选择文件' }}</button>
+      <button
+        v-if="shelf.books.length"
+        type="button"
+        class="btn small-btn"
+        :class="{ on: selectMode === 'shelf' }"
+        @click="selectMode === 'shelf' ? exitSelectMode() : enterSelectMode('shelf')"
+      >
+        {{ selectMode === 'shelf' ? '完成' : '批量管理' }}
+      </button>
+      <input id="shelf-file-input" ref="inputRef" type="file" accept=".txt,.md,.markdown,text/plain" multiple hidden @change="onPick" />
     </div>
 
     <div class="section-title cloud-head">
@@ -461,15 +456,26 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
 <style scoped>
 .dropzone {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
-  padding: 36px 20px;
-  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 20px 0 6px;
+  border-radius: 12px;
   border: 1px dashed var(--line-strong);
-  background: linear-gradient(160deg, rgba(94, 234, 212, 0.04), transparent 60%);
-  text-align: center;
+  background: rgba(255, 255, 255, 0.02);
   transition: 0.18s ease;
+}
+.dropzone .dz-text {
+  flex: 1;
+  min-width: 180px;
+  font-size: 0.84rem;
+  opacity: 0.75;
+}
+.dropzone .small-btn {
+  padding: 6px 14px;
+  font-size: 0.8rem;
 }
 
 .dropzone.dragging {
@@ -503,10 +509,46 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
 }
 
 .book-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 14px;
-  margin-top: 22px;
+  gap: 16px 14px;
+  padding: 16px 16px 22px;
+  border-radius: 14px;
+  /* 书架：浅木色底板 */
+  background:
+    linear-gradient(180deg, rgba(120, 92, 62, 0.16), rgba(120, 92, 62, 0.06) 55%, rgba(120, 92, 62, 0.2)),
+    rgba(0, 0, 0, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.18);
+}
+/* 书架最下沿那根木条 */
+.book-grid::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 6px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(150, 112, 74, 0.55), rgba(90, 66, 42, 0.55));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+/* 书从架子上「立」起来 */
+.book-grid .book-card {
+  transform-origin: bottom center;
+  animation: book-settle 0.4s ease both;
+}
+@keyframes book-settle {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .book-card {

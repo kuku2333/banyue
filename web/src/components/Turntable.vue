@@ -76,9 +76,10 @@ function onTap(): void {
 <style scoped>
 .turntable {
   display: flex;
-  gap: 22px;
+  flex-direction: column;
   align-items: center;
-  padding: 18px 20px;
+  gap: 16px;
+  padding: 20px 18px 18px;
   border: 1px solid var(--line, #26303c);
   border-radius: 18px;
   background:
@@ -246,20 +247,40 @@ function onTap(): void {
 
 /* ---------- 信息区 ---------- */
 .tt-info {
-  flex: 1;
+  width: 100%;
   min-width: 0;
+  text-align: center;
+  padding-bottom: 4px;
 }
+/* 曲名：渐变字 + 轻微光晕，播放时流动 */
 .tt-title {
-  margin: 0 0 2px;
-  font-size: 1.25rem;
+  margin: 0 0 4px;
+  font-size: 1.18rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: linear-gradient(100deg, #ffffff 0%, #9fd8ff 38%, #c9b6ff 68%, #ffffff 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 24px rgba(124, 196, 255, 0.22);
+}
+.spinning .tt-title {
+  animation: tt-shimmer 4.5s linear infinite;
+}
+@keyframes tt-shimmer {
+  from { background-position: 0% 50%; }
+  to { background-position: 220% 50%; }
 }
 .tt-artist {
-  margin: 0 0 12px;
-  opacity: 0.72;
-  font-size: 0.9rem;
+  margin: 0;
+  font-size: 0.84rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -272,13 +293,11 @@ function onTap(): void {
 
 @media (max-width: 767px) {
   .turntable {
-    flex-direction: column;
-    gap: 14px;
-    padding: 16px;
+    gap: 12px;
+    padding: 14px;
   }
-  .tt-info {
-    width: 100%;
-    text-align: center;
+  .tt-title {
+    font-size: 1.02rem;
   }
 }
 </style>

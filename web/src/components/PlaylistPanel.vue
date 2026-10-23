@@ -250,26 +250,6 @@ async function removeItem(itemId: string): Promise<void> {
   }
 }
 
-/** 改歌手的名字（歌单里的条目标注） */
-async function editArtist(itemId: string): Promise<void> {
-  const current = detail.value
-  const item = current?.items.find((it) => it.id === itemId)
-  if (!current || !item) return
-  const next = window.prompt('歌手', item.artist)?.trim()
-  if (next === undefined || next === item.artist) return
-  busy.value = true
-  try {
-    // 服务端不提供改条目接口：删了重加（保持同 key，位置会变到末尾）
-    await removePlaylistItem(current.id, itemId)
-    await addPlaylistItem(current.id, { title: item.title, artist: next, key: item.key, assetId: item.assetId, hash: item.hash })
-    await openPlaylist(current.id)
-  } catch (err) {
-    error.value = (err as Error).message
-  } finally {
-    busy.value = false
-  }
-}
-
 async function hide(id: string): Promise<void> {
   busy.value = true
   try {
@@ -357,17 +337,16 @@ defineExpose({ reload: load })
         </div>
       </header>
 
-      <ol v-if="detail.items.length" class="song-list">
-        <li v-for="(item, index) in detail.items" :key="item.id">
-          <span class="idx">{{ index + 1 }}</span>
-          <div class="song-main">
-            <b>{{ item.title }}</b>
-            <span>{{ item.artist || '未填写歌手' }}</span>
+      <ol v-if="detail.items.length" class="pl-discs">
+        <li v-for="item in detail.items" :key="item.id" class="pl-disc">
+          <div class="pl-vinyl">
+            <span class="pl-vinyl-label">{{ item.title.slice(0, 1) }}</span>
           </div>
-          <template v-if="detail.mine">
-            <button type="button" class="mini" @click="editArtist(item.id)">改歌手</button>
-            <button type="button" class="mini danger" @click="removeItem(item.id)">移除</button>
-          </template>
+          <b class="pl-disc-title" :title="item.title">{{ item.title }}</b>
+          <span class="pl-disc-artist">{{ item.artist || '未知歌手' }}</span>
+          <button v-if="detail.mine" type="button" class="pl-disc-del" title="移除" @click="removeItem(item.id)">
+            ×
+          </button>
         </li>
       </ol>
       <p v-else class="muted small">歌单还是空的。</p>
@@ -573,36 +552,95 @@ defineExpose({ reload: load })
   border-color: rgba(76, 194, 255, 0.5);
   color: #7cc4ff;
 }
-.song-list {
+/* 歌单里的歌也做成唱片 */
+.pl-discs {
   margin: 14px 0;
   padding: 0;
   list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 14px 10px;
 }
-.song-list li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 4px;
-  border-bottom: 1px solid var(--line);
-}
-.song-main {
-  flex: 1;
-  min-width: 0;
+.pl-disc {
+  position: relative;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px 6px;
+  border-radius: 12px;
+  transition: background 0.16s ease;
 }
-.song-main b {
+.pl-disc:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.pl-vinyl {
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 4px),
+    radial-gradient(circle at 50% 50%, #0a0d10 0 62%, #060606 63% 100%);
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  transition: transform 0.2s ease;
+}
+.pl-disc:hover .pl-vinyl {
+  transform: scale(1.05);
+}
+.pl-vinyl-label {
+  display: grid;
+  place-items: center;
+  width: 46%;
+  height: 46%;
+  border-radius: 50%;
+  background: linear-gradient(140deg, #4cc2ff, #7a6cff);
+  color: #04121e;
+  font-weight: 700;
   font-size: 0.9rem;
 }
-.song-main span {
+.pl-disc-title {
+  max-width: 100px;
   font-size: 0.76rem;
-  opacity: 0.65;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.idx {
-  width: 22px;
-  font-size: 0.76rem;
-  opacity: 0.5;
-  font-variant-numeric: tabular-nums;
+.pl-disc-artist {
+  max-width: 100px;
+  font-size: 0.68rem;
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pl-disc-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: rgba(10, 14, 20, 0.9);
+  color: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.pl-disc:hover .pl-disc-del {
+  opacity: 1;
+}
+.pl-disc-del:hover {
+  color: #ff7b72;
+  border-color: rgba(255, 123, 114, 0.5);
 }
 .pickable {
   margin: 10px 0 4px;

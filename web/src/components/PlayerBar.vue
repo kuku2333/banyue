@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { PLAY_MODES, usePlayerStore } from '@/stores/player'
 import PlaylistPicker from '@/components/PlaylistPicker.vue'
+import { api } from '@/lib/api'
 import CommentsPanel from '@/components/CommentsPanel.vue'
 import { formatTime } from '@/lib/music'
 import { hashCode } from '@/lib/cover'
@@ -10,6 +11,64 @@ import { hashCode } from '@/lib/cover'
 const player = usePlayerStore()
 const queueOpen = ref(false)
 const pickerOpen = ref(false)
+/* 编辑当前曲目信息 */
+const editOpen = ref(false)
+const editTitle = ref('')
+const editArtist = ref('')
+const editBusy = ref(false)
+const editError = ref('')
+
+function openEdit(): void {
+  const track = player.current
+  if (!track) return
+  editTitle.value = track.title
+  editArtist.value = track.artist === '本地文件' ? '' : (track.artist ?? '')
+  editError.value = ''
+  editOpen.value = true
+}
+
+async function saveEdit(): Promise<void> {
+  const track = player.current
+  if (!track || editBusy.value) return
+  const title = editTitle.value.trim()
+  const artist = editArtist.value.trim()
+  if (!title) {
+    editError.value = '歌名不能为空'
+    return
+  }
+  editBusy.value = true
+  editError.value = ''
+  try {
+    if (track.id.startsWith('cloud-')) {
+      // 云端：改 assets 的 title / subtitle
+      await api(`/api/assets/${encodeURIComponent(track.id.slice(6))}`, {
+        method: 'PATCH',
+        body: { title, artist },
+      })
+    } else if (track.local) {
+      // 本地：直接改 IndexedDB 里的记录
+      const { getTrackBlob, addTrack, listTracks } = await import('@/lib/db')
+      const all = await listTracks()
+      const record = all.find((item) => item.id === track.id)
+      if (record) await addTrack({ ...record, title, artist })
+      void getTrackBlob
+    } else {
+      throw new Error('榜单/搜索来的曲目不能改名')
+    }
+    // 同步内存里的队列
+    const queue = player.queue
+    const index = queue.findIndex((item) => item.id === track.id)
+    if (index >= 0) {
+      queue[index] = { ...queue[index]!, title, artist }
+    }
+    editOpen.value = false
+  } catch (err) {
+    editError.value = (err as Error).message
+  } finally {
+    editBusy.value = false
+  }
+}
+
 const commentsOpen = ref(false)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const orbCanvas = ref<HTMLCanvasElement | null>(null)
@@ -55,7 +114,9 @@ let baseBottom = 0
 const NO_DRAG = 'button, input, a, .queue-panel, .p-bar, [data-no-drag]'
 
 function startDrag(event: PointerEvent): void {
-  if ((event.target as HTMLElement).closest(NO_DRAG)) return
+  const target = event.target as HTMLElement
+  // 圆球自身就是 button，但它是拖动手柄，优先放行
+  if (!target.closest('[data-drag]') && target.closest(NO_DRAG)) return
   dragging.value = true
   draggedDistance = 0
   startX = event.clientX
@@ -429,6 +490,7 @@ onBeforeUnmount(() => {
           <span aria-hidden="true">{{ modeInfo.icon }}</span
           >{{ modeInfo.label }}
         </button>
+        <button type="button" class="p-mode" title="改歌名 / 歌手" @click="openEdit">编辑</button>
         <button type="button" class="p-mode" @click="pickerOpen = true">加入歌单</button>
         <button type="button" class="p-mode" @click="commentsOpen = true">评论</button>
         <label class="p-vol">
@@ -467,6 +529,7 @@ onBeforeUnmount(() => {
     :class="{ playing: player.playing }"
     :style="playerStyle"
     :aria-label="player.playing ? '暂停' : '播放'"
+    data-drag
     @pointerdown="startDrag"
     @click="onOrbClick"
   >
@@ -478,6 +541,29 @@ onBeforeUnmount(() => {
       <svg v-else viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
     </span>
   </button>
+
+  <Transition name="auth">
+    <div v-if="editOpen" class="edit-layer" role="dialog" aria-modal="true" aria-label="编辑歌曲信息" @click.self="editOpen = false">
+      <div class="edit-box">
+        <header>
+          <h2>编辑歌曲信息</h2>
+          <button type="button" class="edit-close" aria-label="关闭" @click="editOpen = false">×</button>
+        </header>
+        <label>
+          <span>歌名</span>
+          <input v-model="editTitle" maxlength="120" />
+        </label>
+        <label>
+          <span>歌手</span>
+          <input v-model="editArtist" maxlength="120" placeholder="留空表示未知歌手" />
+        </label>
+        <p v-if="editError" class="edit-err">{{ editError }}</p>
+        <button type="button" class="edit-save" :disabled="editBusy" @click="saveEdit">
+          {{ editBusy ? '保存中…' : '保存' }}
+        </button>
+      </div>
+    </div>
+  </Transition>
 
   <PlaylistPicker
     :open="pickerOpen"
@@ -492,6 +578,81 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.edit-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(4, 8, 12, 0.66);
+}
+.edit-box {
+  width: min(360px, 100%);
+  padding: 18px;
+  border: 1px solid #2b3642;
+  border-radius: 14px;
+  background: #141b23;
+  color: #e7edf2;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+.edit-box header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.edit-box h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.edit-close {
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 1.3rem;
+  opacity: 0.6;
+  cursor: pointer;
+}
+.edit-box label {
+  display: block;
+  margin-bottom: 10px;
+}
+.edit-box label span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.76rem;
+  opacity: 0.6;
+}
+.edit-box input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #2b3642;
+  border-radius: 8px;
+  background: #0d1319;
+  color: #e7edf2;
+  font-size: 0.9rem;
+}
+.edit-save {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border: none;
+  border-radius: 9px;
+  background: #4cc2ff;
+  color: #06222e;
+  font-weight: 600;
+  cursor: pointer;
+}
+.edit-save:disabled {
+  opacity: 0.5;
+}
+.edit-err {
+  margin: 0 0 8px;
+  color: #ff7b72;
+  font-size: 0.8rem;
+}
+
 .player {
   position: fixed;
   right: 20px;
