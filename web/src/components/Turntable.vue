@@ -58,15 +58,37 @@ function onTap(): void {
       </div>
       <!-- 唱臂 -->
       <div class="tt-arm" :class="{ on: player.playing }">
-        <!-- 尾部配重 -->
-        <div class="tt-counterweight" />
-        <!-- 转轴（带螺丝） -->
-        <div class="tt-arm-base"><i class="tt-screw" /></div>
-        <!-- 臂杆 -->
-        <div class="tt-arm-rod" />
-        <!-- 唱头 + 唱针 -->
+        <!-- 尾部配重（带镂空） -->
+        <div class="tt-counterweight">
+          <i class="tt-cw-slot" />
+        </div>
+
+        <!-- 转轴：多层同心结构 + 螺丝阵列 -->
+        <div class="tt-arm-base">
+          <i class="tt-hub-outer" />
+          <i class="tt-hub-mid" />
+          <i class="tt-screw" />
+          <i class="tt-screw s2" />
+          <i class="tt-screw s3" />
+          <i class="tt-screw s4" />
+        </div>
+
+        <!-- 臂杆：镂空框架（左右主梁 + 横向加强筋） -->
+        <div class="tt-arm-rod">
+          <i class="tt-rail left" />
+          <i class="tt-rail right" />
+          <i class="tt-rib r1" />
+          <i class="tt-rib r2" />
+          <i class="tt-rib r3" />
+          <i class="tt-rib r4" />
+          <i class="tt-trace" />
+        </div>
+
+        <!-- 唱头：分段结构 + 针 -->
         <div class="tt-arm-head">
-          <i class="tt-cart-shell" />
+          <i class="tt-head-cap" />
+          <i class="tt-head-body" />
+          <i class="tt-head-pin" />
           <i class="tt-needle" />
         </div>
       </div>
@@ -208,7 +230,7 @@ function onTap(): void {
   background: radial-gradient(circle at 35% 30%, #e8e8e8, #7c7c7c 70%);
 }
 
-/* ---------- 唱臂：纯机械风（金属杆 + 配重 + 唱头 + 指针） ---------- */
+/* ---------- 唱臂：CNC 镂空框架 + 精密科技感 ---------- */
 .tt-arm {
   position: absolute;
   right: 12px;
@@ -223,121 +245,224 @@ function onTap(): void {
   transform: rotate(15deg);
 }
 
-/* 转轴：金属圆盘 + 十字螺丝 */
+/* ---------- 转轴：同心多层 + 螺丝阵列 ---------- */
 .tt-arm-base {
   position: absolute;
-  right: -12px;
-  top: -12px;
-  width: 34px;
-  height: 34px;
+  right: -14px;
+  top: -14px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background:
-    radial-gradient(circle at 38% 32%, #eef2f6 0 8%, #b9c2cc 30%, #7b858f 58%, #3a4149 88%);
+    conic-gradient(from 30deg, #414a54, #2a323a 25%, #4c5762 50%, #262d34 75%, #414a54),
+    radial-gradient(circle, #1a1f25, #0d1116);
   box-shadow:
-    0 3px 9px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.24),
-    inset 0 -3px 7px rgba(0, 0, 0, 0.5);
+    0 3px 10px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(160, 200, 230, 0.22);
 }
+.tt-hub-outer {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  border: 1px solid rgba(140, 180, 210, 0.35);
+  background: radial-gradient(circle at 40% 34%, rgba(255, 255, 255, 0.14), transparent 62%);
+}
+.tt-hub-mid {
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 36%, #39424c, #12171c 78%);
+  box-shadow: inset 0 0 0 1px rgba(120, 190, 240, 0.28);
+}
+/* 中心 + 四角微型螺丝 */
 .tt-screw {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #4a525b, #12161a);
-  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.2);
+  background: radial-gradient(circle at 40% 35%, #586370, #12161a 80%);
+  box-shadow: inset 0 0 0 1px rgba(190, 220, 245, 0.3);
 }
-/* 十字槽 */
+.tt-screw.s2,
+.tt-screw.s3,
+.tt-screw.s4 {
+  width: 4px;
+  height: 4px;
+}
+.tt-screw.s2 {
+  left: 22%;
+  top: 26%;
+}
+.tt-screw.s3 {
+  left: 78%;
+  top: 30%;
+}
+.tt-screw.s4 {
+  left: 50%;
+  top: 78%;
+}
+/* 螺丝槽 */
 .tt-screw::before,
 .tt-screw::after {
   content: '';
   position: absolute;
   left: 50%;
   top: 50%;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.75);
 }
 .tt-screw::before {
-  width: 7px;
-  height: 1.5px;
+  width: 60%;
+  height: 1px;
   transform: translate(-50%, -50%);
 }
 .tt-screw::after {
-  width: 1.5px;
-  height: 7px;
+  width: 1px;
+  height: 60%;
   transform: translate(-50%, -50%);
 }
 
-/* 臂杆：圆柱金属杆 */
+/* ---------- 臂杆：镂空框架 ---------- */
 .tt-arm-rod {
   position: absolute;
-  right: 3px;
+  right: 1px;
   top: 0;
-  width: 7px;
-  height: 122px;
-  border-radius: 3.5px;
-  background: linear-gradient(
-    90deg,
-    #6d7681 0%,
-    #e9eef3 22%,
-    #c2cbd4 42%,
-    #8d97a2 68%,
-    #59626c 100%
-  );
-  box-shadow:
-    0 2px 5px rgba(0, 0, 0, 0.45),
-    inset 0 0 2px rgba(255, 255, 255, 0.4);
+  width: 12px;
+  height: 124px;
+  /* 中间镂空：只剩左右两条梁，靠 clip-path 切出通透感 */
+  background: linear-gradient(90deg, #7f8a95 0 2px, transparent 2px 10px, #4b545e 10px 12px);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+/* 左右主梁（金属质感） */
+.tt-rail {
+  position: absolute;
+  top: 0;
+  width: 2.5px;
+  height: 100%;
+  border-radius: 1px;
+}
+.tt-rail.left {
+  left: 0;
+  background: linear-gradient(90deg, #b9c4ce, #6f7982);
+}
+.tt-rail.right {
+  right: 0;
+  background: linear-gradient(90deg, #6f7982, #333b43);
+}
+/* 横向加强筋 */
+.tt-rib {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #8f99a3, #4d565f);
+  border-radius: 1px;
+}
+.tt-rib.r1 {
+  top: 18%;
+}
+.tt-rib.r2 {
+  top: 42%;
+}
+.tt-rib.r3 {
+  top: 66%;
+}
+.tt-rib.r4 {
+  top: 88%;
+}
+/* 中间一根细的信号走线（科技感点缀，克制） */
+.tt-trace {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  width: 1px;
+  height: calc(100% - 8px);
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, transparent, rgba(96, 190, 255, 0.5) 30%, rgba(96, 190, 255, 0.5) 70%, transparent);
+  opacity: 0.75;
 }
 
-/* 尾部配重块 */
+/* 尾部配重：带镂空槽 */
 .tt-counterweight {
   position: absolute;
-  right: -3px;
-  top: -22px;
-  width: 16px;
-  height: 20px;
-  border-radius: 3px;
-  background: linear-gradient(160deg, #4a525c 0%, #1c2229 60%, #0a0d11 100%);
+  right: -6px;
+  top: -26px;
+  width: 20px;
+  height: 24px;
+  border-radius: 2px;
+  background: linear-gradient(160deg, #4a525c 0%, #232a32 55%, #0d1116 100%);
   box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    0 2px 7px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(160, 200, 230, 0.18);
+}
+.tt-cw-slot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.75) 0 2px,
+    rgba(120, 150, 175, 0.25) 2px 3px
+  );
 }
 
-/* 唱头：金属外壳 */
+/* ---------- 唱头：分段结构 ---------- */
 .tt-arm-head {
   position: absolute;
-  right: -4px;
+  right: -5px;
   top: 118px;
-  width: 20px;
-  height: 18px;
-  border-radius: 2px;
-  background: linear-gradient(150deg, #d5dce4 0%, #9aa4af 38%, #5a636d 72%, #2b3138 100%);
-  box-shadow:
-    0 3px 8px rgba(0, 0, 0, 0.6),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.28);
+  width: 22px;
+  height: 20px;
 }
-/* 唱头外框的薄边 */
-.tt-cart-shell {
+.tt-head-cap {
   position: absolute;
-  left: 2px;
-  right: 2px;
-  bottom: 2px;
-  height: 4px;
-  border-radius: 1px;
-  background: linear-gradient(180deg, #3d454e, #171c21);
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 6px;
+  border-radius: 1px 1px 0 0;
+  background: linear-gradient(180deg, #dfe6ee, #9aa5b0 60%, #5d666f);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
 }
-/* 唱针：细金属针尖 */
+.tt-head-body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 6px;
+  height: 10px;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.35) 0 1px, transparent 1px 3px),
+    linear-gradient(170deg, #3c454f, #14191f 75%);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(140, 185, 220, 0.2);
+}
+.tt-head-pin {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, transparent, rgba(96, 190, 255, 0.65), transparent);
+}
+/* 唱针：锥形金属针尖 */
 .tt-needle {
   position: absolute;
   left: 50%;
-  bottom: -7px;
-  width: 2px;
-  height: 9px;
+  bottom: -8px;
+  width: 2.5px;
+  height: 10px;
   transform: translateX(-50%);
-  background: linear-gradient(180deg, #e7edf3 0%, #aab4be 45%, #6d757e 100%);
-  clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  background: linear-gradient(180deg, #eef4fa 0%, #aab4be 40%, #59616a 100%);
+  clip-path: polygon(32% 0, 68% 0, 100% 100%, 0 100%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 
 /* ---------- 信息区 ---------- */
