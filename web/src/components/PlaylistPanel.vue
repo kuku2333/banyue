@@ -19,6 +19,7 @@ import {
   unhidePlaylist,
   updatePlaylist,
   type PlaylistDetail,
+  type PlaylistItem,
   type PlaylistSummary,
 } from '@/lib/playlists'
 
@@ -159,6 +160,7 @@ async function openPlaylist(id: string): Promise<void> {
   error.value = ''
   try {
     detail.value = await getPlaylist(id)
+    if (!Object.keys(coverByKey.value).length) await loadCovers()
   } catch (err) {
     error.value = (err as Error).message
   } finally {
@@ -275,6 +277,36 @@ async function removeItem(itemId: string): Promise<void> {
   }
 }
 
+/** 云端封面映射：assetId / hash → cover dataURL，给歌单唱片当封面用 */
+const coverByKey = ref<Record<string, string>>({})
+
+async function loadCovers(): Promise<void> {
+  try {
+    const [clouds, locals] = await Promise.all([
+      listAssets('track').catch(() => []),
+      listTracks().catch(() => []),
+    ])
+    const map: Record<string, string> = {}
+    for (const asset of clouds) {
+      if (asset.cover) {
+        map[asset.id] = asset.cover
+        if (asset.hash) map[asset.hash] = asset.cover
+      }
+    }
+    for (const item of locals) {
+      if (item.cover && item.hash) map[item.hash] = item.cover
+    }
+    coverByKey.value = map
+  } catch {
+    /* 没有封面就显示首字 */
+  }
+}
+
+function coverOf(item: PlaylistItem): string {
+  const assetId = (item as { assetId?: string }).assetId ?? ''
+  return coverByKey.value[assetId] || coverByKey.value[item.hash] || ''
+}
+
 /**
  * 点歌单里的唱片就播：把条目还原成 Track。
  * 云端条用 assetId 直链；本地条按 hash 找本地文件；都没有就跳过。
@@ -289,6 +321,7 @@ async function playFromPlaylist(startIndex: number): Promise<void> {
     const assetId = (item as { assetId?: string }).assetId ?? ''
     const hash = item.hash ?? ''
     let track: Track | null = null
+    const art = coverOf(item) || undefined
     if (assetId) {
       track = {
         id: `cloud-${assetId}`,
@@ -297,6 +330,7 @@ async function playFromPlaylist(startIndex: number): Promise<void> {
         source: 'cloud',
         previewUrl: assetUrl(assetId),
         hash,
+        art,
       }
     } else if (hash) {
       const local = await findTrackByHash(hash)
@@ -308,6 +342,7 @@ async function playFromPlaylist(startIndex: number): Promise<void> {
           source: 'local',
           local: true,
           hash: local.hash,
+          art,
         }
       }
     }
@@ -419,7 +454,8 @@ defineExpose({ reload: load })
           @click="(event) => !(event.target as HTMLElement).closest('button') && playFromPlaylist(page * PAGE_SIZE + idx)"
         >
           <div class="pl-vinyl">
-            <span class="pl-vinyl-label">{{ item.title.slice(0, 1) }}</span>
+            <img v-if="coverOf(item)" class="pl-vinyl-cover" :src="coverOf(item)" alt="" loading="lazy" />
+            <span v-else class="pl-vinyl-label">{{ item.title.slice(0, 1) }}</span>
           </div>
           <b class="pl-disc-title" :title="item.title">{{ item.title }}</b>
           <span class="pl-disc-artist">{{ item.artist || '未知歌手' }}</span>
@@ -685,7 +721,14 @@ defineExpose({ reload: load })
     0 0 0 2px rgba(76, 194, 255, 0.75),
     0 6px 18px rgba(0, 0, 0, 0.5);
 }
-.pl-disc.current .pl-disc-title {
+.pl-disc.current .pl-vinyl-cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+.pl-disc-title {
   color: #7cc4ff;
 }
 .pl-vinyl {
