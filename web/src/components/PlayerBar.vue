@@ -51,8 +51,11 @@ let startY = 0
 let baseRight = 0
 let baseBottom = 0
 
+/** 面板空白处都能拖；按钮、进度条、队列里不触发拖动（队列要能滚） */
+const NO_DRAG = 'button, input, a, .queue-panel, .p-bar, [data-no-drag]'
+
 function startDrag(event: PointerEvent): void {
-  if ((event.target as HTMLElement).closest('button') && !player.collapsed) return
+  if ((event.target as HTMLElement).closest(NO_DRAG)) return
   dragging.value = true
   draggedDistance = 0
   startX = event.clientX
@@ -269,6 +272,7 @@ onBeforeUnmount(() => {
       :class="{ dragging }"
       :style="playerStyle"
       @wheel="onWheel"
+      @pointerdown="startDrag"
     >
       <div v-if="queueOpen" class="queue-panel">
         <header>
@@ -291,7 +295,7 @@ onBeforeUnmount(() => {
         </ol>
       </div>
 
-      <div class="p-head" :data-analyser="player.analyser ? 'on' : 'off'" @pointerdown="startDrag">
+      <div class="p-head" :data-analyser="player.analyser ? 'on' : 'off'">
         <div class="p-art" :style="artStyle">
           <span v-if="!player.current?.art">♪</span>
           <img v-else :src="player.current.art" alt="" loading="lazy" />
@@ -499,6 +503,13 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(18px) saturate(140%);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
   color: var(--text);
+  /* 空白处可拖 */
+  cursor: grab;
+  touch-action: none;
+}
+.player.dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .player.dragging {
@@ -599,6 +610,9 @@ onBeforeUnmount(() => {
   max-height: 280px;
   display: flex;
   flex-direction: column;
+  /* 面板整体 touch-action: none 是为了拖动，队列里要还原成能滚 */
+  touch-action: pan-y;
+  cursor: default;
   border-radius: 14px;
   border: 1px solid var(--line-strong);
   background: rgba(14, 20, 27, 0.98);

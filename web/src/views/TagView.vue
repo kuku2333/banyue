@@ -18,7 +18,7 @@ const others = computed(() =>
 watch(
   tag,
   (value) => {
-    document.title = value ? `${value} · 半页` : '标签 · 半页'
+    document.title = value ? `${value} · 半月` : '标签 · 半月'
   },
   { immediate: true },
 )

@@ -25,7 +25,7 @@ const filtered = computed(() =>
 <template>
   <section class="hero shell">
     <div>
-      <span class="eyebrow">Half Page · 林深的个人站</span>
+      <span class="eyebrow">banyue · 林深的个人站</span>
       <h1>把读过的、走过的，<br /><em>写慢一点</em>。</h1>
       <p>
         城市漫游、读书笔记，以及那些当时没想明白、后来也没想明白的事。没有算法推荐，只有时间倒序。

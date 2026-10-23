@@ -67,10 +67,10 @@ function goCollections(): void {
 <template>
   <header class="site-header">
     <div class="nav">
-      <RouterLink class="brand" to="/" aria-label="半页 首页">
+      <RouterLink class="brand" to="/" aria-label="半月 首页">
         <span class="mark">半</span>
-        <b>半页</b>
-        <span>Half Page</span>
+        <b>半月</b>
+        <span>banyue</span>
       </RouterLink>
 
       <nav class="nav-links" aria-label="主导航">

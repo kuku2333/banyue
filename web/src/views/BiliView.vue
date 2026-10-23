@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useStorage } from '@vueuse/core'
 import { api } from '@/lib/api'
 import { fingerprint } from '@/lib/music'
 import { addTrack, findTrackByHash } from '@/lib/db'
@@ -52,6 +53,50 @@ interface PlayInfo {
 
 const input = ref('')
 const loading = ref(false)
+
+/** 最近解析过的链接（最多 10 条，存在 localStorage） */
+interface RecentItem {
+  url: string
+  title: string
+  bvid: string
+  at: number
+}
+const recent = useStorage<RecentItem[]>('banyue:bili:recent', [])
+const pasteTip = ref('')
+
+function remember(url: string, info: VideoInfo): void {
+  const item: RecentItem = { url, title: info.title.slice(0, 80), bvid: info.bvid, at: Date.now() }
+  const rest = recent.value.filter((entry) => entry.url !== url)
+  recent.value = [item, ...rest].slice(0, 10)
+}
+
+function clearRecent(): void {
+  recent.value = []
+}
+
+/** 点历史记录：填回输入框并重新解析 */
+async function openRecent(item: RecentItem): Promise<void> {
+  input.value = item.url
+  await resolve()
+}
+
+/** 读剪贴板 → 自动解析；浏览器不给读就提示手动粘贴 */
+async function pasteAndResolve(): Promise<void> {
+  pasteTip.value = ''
+  try {
+    const text = await navigator.clipboard.readText()
+    const value = text.trim()
+    if (!value) {
+      pasteTip.value = '剪贴板是空的'
+      return
+    }
+    input.value = value
+    await resolve()
+  } catch {
+    pasteTip.value = '浏览器没给剪贴板权限，请手动粘贴（Ctrl+V）'
+    setTimeout(() => (pasteTip.value = ''), 4000)
+  }
+}
 const error = ref('')
 const video = ref<VideoInfo | null>(null)
 const pageIndex = ref(0)
@@ -107,6 +152,7 @@ async function resolve(): Promise<void> {
   trimSrc.value = ''
   try {
     video.value = await api<VideoInfo>('/api/bilibili/resolve', { method: 'POST', body: { url } })
+    remember(url, video.value)
     pageIndex.value = 0
     await loadPlay()
   } catch (err) {
@@ -407,8 +453,28 @@ async function saveToCloud(): Promise<void> {
         placeholder="粘贴链接，如 https://www.bilibili.com/video/BV1xx411c7mD"
         aria-label="B站视频链接"
       />
-      <button type="submit" class="btn" :disabled="loading">{{ loading ? '解析中…' : '解析' }}</button>
+      <button type="button" class="btn" :disabled="loading" title="读剪贴板并直接解析" @click="pasteAndResolve">
+        一键粘贴
+      </button>
+      <button type="submit" class="btn primary" :disabled="loading">{{ loading ? '解析中…' : '解析' }}</button>
     </form>
+    <p v-if="pasteTip" class="notice">{{ pasteTip }}</p>
+
+    <!-- 最近解析 -->
+    <section v-if="recent.length" class="recent">
+      <div class="recent-head">
+        <span class="muted small">最近解析（{{ recent.length }}/10）</span>
+        <button type="button" class="mini" @click="clearRecent">清空</button>
+      </div>
+      <ul>
+        <li v-for="item in recent" :key="item.url">
+          <button type="button" class="recent-item" :title="item.url" @click="openRecent(item)">
+            <b>{{ item.title }}</b>
+            <span>{{ item.bvid }} · {{ new Date(item.at).toLocaleDateString() }}</span>
+          </button>
+        </li>
+      </ul>
+    </section>
 
     <p v-if="error" class="notice">{{ error }}</p>
     <p v-if="loading" class="muted small">正在向 B站 请求视频信息…</p>
@@ -595,6 +661,60 @@ async function saveToCloud(): Promise<void> {
 }
 .search-row input:focus {
   border-color: #4cc2ff;
+}
+.btn.primary {
+  background: #4cc2ff;
+  border-color: transparent;
+  color: #06222e;
+  font-weight: 600;
+}
+
+/* 最近解析 */
+.recent {
+  margin: 0 0 18px;
+}
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.recent ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.recent-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+.recent-item:hover {
+  border-color: rgba(124, 196, 255, 0.5);
+  transform: translateY(-1px);
+}
+.recent-item b {
+  font-size: 0.84rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recent-item span {
+  font-size: 0.72rem;
+  opacity: 0.6;
 }
 
 .video-card {

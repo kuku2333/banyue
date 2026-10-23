@@ -5,7 +5,7 @@ const year = new Date().getFullYear()
 <template>
   <footer class="site-footer">
     <div class="foot-inner">
-      <p>© {{ year }} 半页 · 林深 —— 文字慢一点，日子也慢一点。</p>
+      <p>© {{ year }} 半月 · 林深 —— 文字慢一点，日子也慢一点。</p>
       <div class="fnav">
         <RouterLink to="/">首页</RouterLink>
         <RouterLink to="/archive">归档</RouterLink>

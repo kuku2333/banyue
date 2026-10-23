@@ -130,7 +130,7 @@ watch(post, async () => {
 watch(
   () => post.value?.title,
   (title) => {
-    document.title = title ? `${title} · 半页` : '半页'
+    document.title = title ? `${title} · 半月` : '半月'
   },
   { immediate: true },
 )
