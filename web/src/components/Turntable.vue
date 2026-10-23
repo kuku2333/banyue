@@ -58,9 +58,15 @@ function onTap(): void {
       </div>
       <!-- 唱臂 -->
       <div class="tt-arm" :class="{ on: player.playing }">
-        <div class="tt-arm-base" />
-        <div class="tt-arm-rod" />
-        <div class="tt-arm-head" />
+        <div class="tt-arm-base">
+          <i class="tt-arm-ring" />
+        </div>
+        <div class="tt-arm-rod">
+          <i class="tt-arm-glow" />
+        </div>
+        <div class="tt-arm-head">
+          <i class="tt-needle" />
+        </div>
       </div>
     </div>
 
@@ -208,41 +214,123 @@ function onTap(): void {
   width: 12px;
   height: 12px;
   transform-origin: 50% 50%;
-  transform: rotate(-26deg);
-  transition: transform 0.5s cubic-bezier(0.3, 1.4, 0.5, 1);
+  transform: rotate(-30deg);
+  transition: transform 0.55s cubic-bezier(0.25, 1.3, 0.45, 1);
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
 }
 .tt-arm.on {
-  transform: rotate(14deg);
+  transform: rotate(15deg);
 }
+
+/* 转轴：金属底座 + 发光环 */
 .tt-arm-base {
   position: absolute;
-  right: -8px;
-  top: -8px;
-  width: 26px;
-  height: 26px;
+  right: -10px;
+  top: -10px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #d8dbe0, #6b7178 75%);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+  background:
+    radial-gradient(circle at 34% 28%, #f2f6f9 0 12%, #aab3bd 34%, #4b525c 72%, #20252b 100%);
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
+.tt-arm-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 1px solid rgba(76, 194, 255, 0.55);
+  box-shadow:
+    0 0 10px rgba(76, 194, 255, 0.5),
+    inset 0 0 8px rgba(76, 194, 255, 0.35);
+}
+.spinning .tt-arm-ring {
+  animation: tt-ring-pulse 2.4s ease-in-out infinite;
+}
+@keyframes tt-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    box-shadow: 0 0 8px rgba(76, 194, 255, 0.35);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 16px rgba(76, 194, 255, 0.75);
+  }
+}
+
+/* 臂杆：碳纤维 + 边缘蓝光 */
 .tt-arm-rod {
   position: absolute;
-  right: 2px;
-  top: 4px;
-  width: 6px;
-  height: 118px;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #f0f2f4, #8d949c);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  right: 3px;
+  top: 2px;
+  width: 7px;
+  height: 120px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 5px),
+    linear-gradient(90deg, #3b424b, #10141a 55%, #2b323a);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 1px 4px rgba(0, 0, 0, 0.6);
 }
+.tt-arm-glow {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, transparent, #4cc2ff 20%, #7a6cff 80%, transparent);
+  opacity: 0.75;
+}
+.spinning .tt-arm-glow {
+  animation: tt-glow-run 2.2s ease-in-out infinite;
+}
+@keyframes tt-glow-run {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 唱头：发光的「针」 */
 .tt-arm-head {
   position: absolute;
-  right: -1px;
-  top: 116px;
-  width: 13px;
-  height: 20px;
-  border-radius: 3px;
-  background: linear-gradient(160deg, #23262b, #0c0e11);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  right: 0;
+  top: 118px;
+  width: 14px;
+  height: 22px;
+  border-radius: 4px;
+  background: linear-gradient(160deg, #2a3038, #0b0e12 70%);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(124, 196, 255, 0.28);
+}
+.tt-needle {
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 2px;
+  height: 9px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: linear-gradient(180deg, #9fd8ff, #4cc2ff 60%, transparent);
+  box-shadow: 0 0 8px rgba(76, 194, 255, 0.85);
+}
+.spinning .tt-needle {
+  animation: tt-needle-glow 1.8s ease-in-out infinite;
+}
+@keyframes tt-needle-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 6px rgba(76, 194, 255, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(124, 196, 255, 1);
+  }
 }
 
 /* ---------- 信息区 ---------- */

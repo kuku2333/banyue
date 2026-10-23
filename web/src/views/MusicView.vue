@@ -437,7 +437,6 @@ onMounted(() => {
     <div class="page-head">
       <span class="eyebrow">Music · 听歌</span>
       <h1>听歌</h1>
-      <p>榜单来自 Apple Music 公开接口，试听 30 秒；点列表里任意一张唱片就放上唱片机开播。</p>
     </div>
 
     <div class="music-stage">
@@ -479,6 +478,7 @@ onMounted(() => {
         <button type="button" class="btn small-btn" @click="loadCharts">刷新</button>
       </div>
 
+      <p class="chart-hint">榜单来自 Apple Music 公开接口，每首只能试听 30 秒。</p>
       <p v-if="chartsLoading" class="empty">正在取榜单…</p>
       <p v-else-if="chartsError" class="notice">{{ chartsError }}（Apple 接口偶尔会限流，稍后再试）</p>
       <RecordWall
@@ -1017,6 +1017,15 @@ onMounted(() => {
 /* 行内小唱片：当前曲目旋转 */
 .tt-wrap {
   margin: 4px 0 18px;
+}
+.chart-hint {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(76, 194, 255, 0.25);
+  background: rgba(76, 194, 255, 0.08);
+  color: #8fd3ff;
+  font-size: 0.8rem;
 }
 .track-list li .row-vinyl {
   flex: none;

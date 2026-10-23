@@ -31,7 +31,7 @@ const books = [
     <div class="post-layout" style="padding-top: 8px">
       <article class="prose" style="--font-scale: 1">
         <p>
-          我叫林深，写代码，也写字。这里原本只是一个练手项目，后来慢慢变成我存放「想清楚了的事」的地方
+          我叫雷半斩，写代码，也写字。这里原本只是一个练手项目，后来慢慢变成我存放「想清楚了的事」的地方
           —— 现在它已经是第二版：Vue 3 + Vite + TypeScript，内容放在 Markdown 里，构建产物是纯静态文件。
         </p>
         <p>

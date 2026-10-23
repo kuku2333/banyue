@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { listTracks } from '@/lib/db'
 import { listAssets } from '@/lib/cloud'
@@ -46,6 +46,26 @@ interface PickableTrack {
   assetId: string
   where: '本地' | '云端'
 }
+/* 歌单唱片分页：每行 5 个 × 4 行 = 20 个/页 */
+const PAGE_SIZE = 20
+const page = ref(0)
+
+const pageCount = computed(() => Math.max(1, Math.ceil((detail.value?.items.length ?? 0) / PAGE_SIZE)))
+const pageItems = computed(() => {
+  const items = detail.value?.items ?? []
+  const start = page.value * PAGE_SIZE
+  return items.slice(start, start + PAGE_SIZE)
+})
+
+function gotoPage(next: number): void {
+  page.value = Math.min(Math.max(0, next), pageCount.value - 1)
+}
+
+/* 打开歌单时回到第一页 */
+watch(detail, () => {
+  page.value = 0
+})
+
 const pickables = ref<PickableTrack[]>([])
 const pickLoading = ref(false)
 const showPickable = ref(false)
@@ -338,7 +358,7 @@ defineExpose({ reload: load })
       </header>
 
       <ol v-if="detail.items.length" class="pl-discs">
-        <li v-for="item in detail.items" :key="item.id" class="pl-disc">
+        <li v-for="item in pageItems" :key="item.id" class="pl-disc">
           <div class="pl-vinyl">
             <span class="pl-vinyl-label">{{ item.title.slice(0, 1) }}</span>
           </div>
@@ -350,6 +370,12 @@ defineExpose({ reload: load })
         </li>
       </ol>
       <p v-else class="muted small">歌单还是空的。</p>
+
+      <div v-if="pageCount > 1" class="pager">
+        <button type="button" class="mini" :disabled="page === 0" @click="gotoPage(page - 1)">上一页</button>
+        <span>{{ page + 1 }} / {{ pageCount }}</span>
+        <button type="button" class="mini" :disabled="page >= pageCount - 1" @click="gotoPage(page + 1)">下一页</button>
+      </div>
 
       <form v-if="detail.mine" class="add-form" @submit.prevent="addItem">
         <input v-model="addTitle" placeholder="歌名" required maxlength="120" />
@@ -558,8 +584,27 @@ defineExpose({ reload: load })
   padding: 0;
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px 10px;
+}
+@media (max-width: 900px) {
+  .pl-discs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .pl-discs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 12px 0 4px;
+  font-size: 0.8rem;
+  opacity: 0.85;
 }
 .pl-disc {
   position: relative;
