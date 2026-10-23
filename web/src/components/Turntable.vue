@@ -214,6 +214,7 @@ function onTap(): void {
 .tt-arm.on {
   transform: rotate(14deg);
 }
+/* 转轴：亮黑烤漆质感，中心一点反光 */
 .tt-arm-base {
   position: absolute;
   right: -8px;
@@ -221,9 +222,15 @@ function onTap(): void {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #d8dbe0, #6b7178 75%);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.55) 0 6%, rgba(255, 255, 255, 0) 22%),
+    radial-gradient(circle at 50% 50%, #2b3036 0%, #12161a 62%, #05070a 100%);
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.65),
+    inset 0 1px 1px rgba(255, 255, 255, 0.35),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.8);
 }
+/* 臂杆：黑色发亮——中间一道竖向高光，像抛光黑铬 */
 .tt-arm-rod {
   position: absolute;
   right: 2px;
@@ -231,9 +238,21 @@ function onTap(): void {
   width: 6px;
   height: 118px;
   border-radius: 3px;
-  background: linear-gradient(90deg, #f0f2f4, #8d949c);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  background: linear-gradient(
+    90deg,
+    #05070a 0%,
+    #1b2026 26%,
+    #5d6773 44%,
+    #8e9aa6 50%,
+    #5d6773 56%,
+    #1b2026 74%,
+    #05070a 100%
+  );
+  box-shadow:
+    0 2px 7px rgba(0, 0, 0, 0.6),
+    inset 0 0 1px rgba(255, 255, 255, 0.5);
 }
+/* 唱头：亮黑外壳 + 顶部高光 */
 .tt-arm-head {
   position: absolute;
   right: -1px;
@@ -241,8 +260,13 @@ function onTap(): void {
   width: 13px;
   height: 20px;
   border-radius: 3px;
-  background: linear-gradient(160deg, #23262b, #0c0e11);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.22) 0 3px, rgba(255, 255, 255, 0) 12px),
+    linear-gradient(160deg, #23282e 0%, #0d1115 55%, #030507 100%);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.8);
 }
 
 /* ---------- 信息区 ---------- */
