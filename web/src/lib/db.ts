@@ -32,6 +32,8 @@ export interface TrackRecord {
   data?: Blob
   /** 唱片封面（dataURL，可选） */
   cover?: string
+  /** 歌词原文（LRC 或纯文本，可选） */
+  lyrics?: string
 }
 
 export interface DraftRecord {

@@ -4,6 +4,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { REGIONS, fetchTopSongs, fingerprint, isAudioFile, searchSongs, type Region, type Track } from '@/lib/music'
 import { addTrack, deleteTrack, findTrackByHash, getTrackBlob, listTracks, type TrackRecord } from '@/lib/db'
+import { isLyricFile, readEmbeddedLyrics } from '@/lib/lyrics'
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, syncTracksToCloud, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import BatchBar from '@/components/BatchBar.vue'
 import Turntable from '@/components/Turntable.vue'
@@ -303,6 +304,7 @@ const localTracks = computed<Track[]>(() =>
     local: true,
     hash: item.hash,
     art: item.cover || undefined,
+    lyrics: item.lyrics || undefined,
   })),
 )
 
@@ -345,33 +347,54 @@ async function refreshLocal(): Promise<void> {
 
 async function importLocal(files: FileList | File[] | null): Promise<void> {
   if (!files) return
-  const list = Array.from(files).filter((file) => isAudioFile(file.name))
+  const all = Array.from(files)
+  const list = all.filter((file) => isAudioFile(file.name))
   if (!list.length) {
     message.value = '没有可导入的音频文件'
     return
   }
+  // 同时选了 .lrc：按「文件名（不含扩展名）」配对
+  const lyricFiles = new Map<string, File>()
+  for (const file of all) {
+    if (isLyricFile(file.name) && !isAudioFile(file.name)) {
+      lyricFiles.set(file.name.replace(/\.[^.]+$/, '').toLowerCase(), file)
+    }
+  }
   importing.value = true
   let added = 0
   let skipped = 0
+  let withLyrics = 0
   try {
     for (const file of list) {
       try {
         const buffer = await file.arrayBuffer()
         const hash = await fingerprint(buffer, `${file.name}-${file.size}`)
+        const baseName = file.name.replace(/\.[^.]+$/, '')
         const exists = await findTrackByHash(hash)
+        // 先看同名 .lrc，再试音频内嵌歌词
+        const paired = lyricFiles.get(baseName.toLowerCase())
+        let lyrics = paired ? await paired.text() : ''
+        if (!lyrics.trim()) lyrics = await readEmbeddedLyrics(file)
         if (exists) {
+          // 已存在但这次带了歌词：补上
+          if (lyrics.trim() && !exists.lyrics) {
+            await addTrack({ ...exists, lyrics })
+            withLyrics++
+          }
           skipped++
           continue
         }
         await addTrack({
           id: hash,
-          title: file.name.replace(/\.[^.]+$/, ''),
+          title: baseName,
           artist: '',
           size: file.size,
           hash,
           createdAt: Date.now(),
           data: file,
+          lyrics: lyrics.trim() ? lyrics : undefined,
         })
+        if (lyrics.trim()) withLyrics++
         added++
       } catch {
         skipped++
@@ -382,7 +405,7 @@ async function importLocal(files: FileList | File[] | null): Promise<void> {
     // 中途抛错也要把按钮解锁，否则会一直显示「导入中…」
     importing.value = false
   }
-  message.value = `新增 ${added} 首${skipped ? ` · 跳过 ${skipped} 首（重复或失败）` : ''}`
+  message.value = `新增 ${added} 首${withLyrics ? `，${withLyrics} 首带歌词` : ''}${skipped ? ` · 跳过 ${skipped} 首（重复或失败）` : ''}`
   setTimeout(() => (message.value = ''), 4000)
 }
 

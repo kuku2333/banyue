@@ -14,6 +14,8 @@ export interface Track {
   region?: Region['id']
   /** 本地文件不在 Track 里直接放 Blob，播放时按 id 从 IndexedDB 取 */
   local?: boolean
+  /** 歌词原文（LRC / 纯文本，可选） */
+  lyrics?: string
 }
 
 export interface Region {
