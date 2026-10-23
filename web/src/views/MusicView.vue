@@ -8,6 +8,7 @@ import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, syncTracksTo
 import { BILI_HOT, BILI_SNAP } from '@/lib/bili'
 import { formatCount } from '@/lib/format'
 import BatchBar from '@/components/BatchBar.vue'
+import Turntable from '@/components/Turntable.vue'
 
 type Tab = 'charts' | 'search' | 'local' | 'cloud' | 'favs' | 'bili' | 'douyin'
 
@@ -408,6 +409,27 @@ function isCurrent(track: Track): boolean {
   return player.current?.id === track.id
 }
 
+/** 行点击：批量模式下选中；平时「把唱片放到唱片机」开播（按钮/勾选框除外） */
+function onRowClick(event: MouseEvent, list: Track[], index: number, id: string): void {
+  if ((event.target as HTMLElement).closest('button, label, input, a')) return
+  if (selectMode.value) {
+    toggleSelect(id)
+    return
+  }
+  void playFrom(list, index)
+}
+
+/** 云端行点击：批量模式下只允许勾可删项（自己的或管理员） */
+function onCloudRowClick(event: MouseEvent, index: number): void {
+  if ((event.target as HTMLElement).closest('button, label, input, a')) return
+  const asset = cloudTracks.value[index]
+  if (selectMode.value) {
+    if (cloudDeletable(asset)) toggleSelect(asset?.id ?? '')
+    return
+  }
+  void playFrom(cloudList.value, index)
+}
+
 onMounted(() => {
   void loadCharts()
   void refreshLocal()
@@ -420,8 +442,10 @@ onMounted(() => {
     <div class="page-head">
       <span class="eyebrow">Music · 听歌</span>
       <h1>听歌</h1>
-      <p>榜单来自 Apple Music 公开接口，试听 30 秒；双击任意一行播放/暂停，空格也能暂停或继续。</p>
+      <p>榜单来自 Apple Music 公开接口，试听 30 秒；点列表里任意一张唱片就放上唱片机开播。</p>
     </div>
+
+    <Turntable class="tt-wrap" />
 
     <div class="chips" role="tablist" aria-label="音乐来源">
       <button
@@ -465,7 +489,9 @@ onMounted(() => {
           :class="{ playing: isCurrent(track) }"
           title="双击播放 / 暂停"
           @dblclick="player.toggleAt(charts, index)"
+          @click="onRowClick($event, charts, index, track.id)"
         >
+          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
           <span class="num">{{ String(index + 1).padStart(2, '0') }}</span>
           <div class="t-main">
             <b>{{ track.title }}</b>
@@ -513,7 +539,9 @@ onMounted(() => {
           :class="{ playing: isCurrent(track) }"
           title="双击播放 / 暂停"
           @dblclick="player.toggleAt(results, index)"
+          @click="onRowClick($event, results, index, track.id)"
         >
+          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
           <div class="t-main">
             <b>{{ track.title }}</b>
             <span>{{ track.artist }} · {{ track.album ?? '单曲' }}</span>
@@ -572,12 +600,13 @@ onMounted(() => {
           :key="track.id"
           :class="{ playing: isCurrent(track), selected: selectMode && isSelected(track.id) }"
           :title="selectMode ? '点击选中' : '双击播放 / 暂停'"
-          @click="selectMode && toggleSelect(track.id)"
+          @click="onRowClick($event, localTracks, index, track.id)"
           @dblclick="!selectMode && player.toggleAt(localTracks, index)"
         >
           <label v-if="selectMode" class="sel" @click.stop>
             <input type="checkbox" :checked="isSelected(track.id)" @change="toggleSelect(track.id)" />
           </label>
+          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
           <div class="t-main">
             <b>{{ track.title }}</b>
             <span>{{ track.artist }} · #{{ track.hash?.slice(0, 6) }}</span>
@@ -653,7 +682,7 @@ onMounted(() => {
             selected: selectMode && isSelected(cloudTracks[index]?.id ?? ''),
           }"
           :title="selectMode && cloudDeletable(cloudTracks[index]) ? '点击选中' : '双击播放 / 暂停'"
-          @click="selectMode && cloudDeletable(cloudTracks[index]) && toggleSelect(cloudTracks[index]!.id)"
+          @click="onCloudRowClick($event, index)"
           @dblclick="!selectMode && player.toggleAt(cloudList, index)"
         >
           <label v-if="selectMode && cloudDeletable(cloudTracks[index])" class="sel" @click.stop>
@@ -663,6 +692,7 @@ onMounted(() => {
               @change="toggleSelect(cloudTracks[index]!.id)"
             />
           </label>
+          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
           <div class="t-main">
             <b>{{ track.title }}</b>
             <span>{{ cloudTracks[index]?.owner.displayName }} · {{ formatSize(cloudTracks[index]?.size ?? 0) }}</span>
@@ -720,7 +750,9 @@ onMounted(() => {
           :class="{ playing: isCurrent(track) }"
           title="双击播放 / 暂停"
           @dblclick="player.toggleAt(player.favorites, index)"
+          @click="onRowClick($event, player.favorites, index, track.id)"
         >
+          <span class="row-vinyl" :class="{ spin: isCurrent(track) && player.playing }" aria-hidden="true" />
           <div class="t-main">
             <b>{{ track.title }}</b>
             <span>{{ track.artist || (track.local ? '本地文件' : '') }}</span>
@@ -970,6 +1002,34 @@ onMounted(() => {
 /* 批量管理选中态 */
 .track-list li.selected {
   background: color-mix(in oklab, var(--accent, #38bdf8) 12%, transparent);
+}
+
+/* 行内小唱片：当前曲目旋转 */
+.tt-wrap {
+  margin: 4px 0 18px;
+}
+.track-list li .row-vinyl {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, var(--accent, #4cc2ff) 0 26%, #0a0c0f 28% 100%);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.track-list li .row-vinyl.spin {
+  animation: row-spin 3.6s linear infinite;
+}
+@keyframes row-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.track-list li.playing .row-vinyl {
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--accent, #4cc2ff) 65%, transparent),
+    0 2px 10px rgba(0, 0, 0, 0.4);
 }
 .track-list li .sel {
   display: flex;
