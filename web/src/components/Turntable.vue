@@ -23,10 +23,26 @@ const labelStyle = computed(() => ({
     hsl(${labelHue.value} 62% 46%))`,
 }))
 const initial = computed(() => (current.value?.title ?? '空').slice(0, 1))
+const canToggle = computed(() => Boolean(current.value))
+
+/** 点整块唱片机 = 播放/暂停（没有曲目时不做任何事） */
+function onTap(): void {
+  if (!current.value) return
+  void player.toggle()
+}
 </script>
 
 <template>
-  <div class="turntable" :class="{ spinning: player.playing }">
+  <div
+    class="turntable"
+    :class="{ spinning: player.playing, clickable: canToggle }"
+    :role="canToggle ? 'button' : 'group'"
+    :tabindex="canToggle ? 0 : -1"
+    :title="canToggle ? (player.playing ? '点击暂停' : '点击继续播放') : '先从右边点一张唱片'"
+    @click="onTap"
+    @keydown.enter.prevent="onTap"
+    @keydown.space.prevent="onTap"
+  >
     <!-- 唱盘 -->
     <div class="tt-deck">
       <div class="tt-platter">
@@ -69,6 +85,27 @@ const initial = computed(() => (current.value?.title ?? '空').slice(0, 1))
     linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0) 60%),
     #12161d;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+  transition:
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.turntable.clickable {
+  cursor: pointer;
+}
+.turntable.clickable:hover {
+  border-color: rgba(124, 196, 255, 0.45);
+  transform: translateY(-2px);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.42);
+}
+.turntable.clickable:focus-visible {
+  outline: 2px solid #4cc2ff;
+  outline-offset: 3px;
+}
+/* 悬停时提示可点 */
+.turntable.clickable .tt-now::after {
+  content: ' · 点这里播放/暂停';
+  opacity: 0.7;
 }
 
 /* ---------- 唱盘 ---------- */
