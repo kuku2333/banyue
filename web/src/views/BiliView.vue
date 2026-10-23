@@ -6,6 +6,7 @@ import { addTrack, findTrackByHash } from '@/lib/db'
 import { listAssets, uploadAsset } from '@/lib/cloud'
 import { useAuthStore } from '@/stores/auth'
 import AudioTrimmer from '@/components/AudioTrimmer.vue'
+import BiliPlayer from '@/components/BiliPlayer.vue'
 
 const auth = useAuthStore()
 
@@ -148,6 +149,17 @@ const selectedVideo = computed<StreamItem | null>(() => {
 })
 
 const selectedAudio = computed<StreamItem | null>(() => play.value?.audios[audioIndex.value] ?? null)
+
+/* 在线播放：视频用 avc 流 + 音频流双流同步 */
+const showPlayer = ref(false)
+const playerMode = ref<'video' | 'audio'>('video')
+const streamVideoUrl = computed(() => (selectedVideo.value ? proxyUrl(selectedVideo.value.url) : ''))
+const streamAudioUrl = computed(() => (selectedAudio.value ? proxyUrl(selectedAudio.value.url) : ''))
+
+function openPlayer(mode: 'video' | 'audio'): void {
+  playerMode.value = mode
+  showPlayer.value = true
+}
 
 /** 视频下载：交给浏览器走代理附件下载（流式，不占内存） */
 const videoDownloadUrl = computed(() => {
@@ -410,6 +422,15 @@ async function saveToCloud(): Promise<void> {
             >
               下载视频（{{ selectedVideo?.codec?.toUpperCase() }}）
             </a>
+            <button
+              type="button"
+              class="btn"
+              :disabled="!streamVideoUrl || !streamAudioUrl"
+              title="不下载，直接在页面上看"
+              @click="openPlayer('video')"
+            >
+              在线观看
+            </button>
             <span v-if="selectedVideo?.bandwidth" class="muted small">
               约 {{ Math.round((selectedVideo.bandwidth * 8) / 1000 / 1000 * 10) / 10 }} Mbps
             </span>
@@ -441,6 +462,15 @@ async function saveToCloud(): Promise<void> {
             <button
               type="button"
               class="btn"
+              :disabled="!streamAudioUrl"
+              title="不下载，直接试听这段音频"
+              @click="openPlayer('audio')"
+            >
+              在线试听
+            </button>
+            <button
+              type="button"
+              class="btn"
               :disabled="!selectedAudio || savingLocal"
               title="存进浏览器本地音乐库，可在「听歌 → 本地音乐」里播放"
               @click="saveToLocal"
@@ -462,6 +492,22 @@ async function saveToCloud(): Promise<void> {
           <p v-if="!auth.loggedIn" class="muted small">保存到云端需要先登录（右上角「登录」）。</p>
         </div>
       </template>
+    </section>
+
+    <!-- 在线播放 -->
+    <section v-if="showPlayer && streamAudioUrl" class="panel">
+      <div class="player-head">
+        <h3>{{ playerMode === 'video' ? '在线观看' : '在线试听' }}</h3>
+        <button type="button" class="btn small-btn" @click="showPlayer = false">收起</button>
+      </div>
+      <BiliPlayer
+        :key="`${streamVideoUrl}|${streamAudioUrl}`"
+        :video-url="streamVideoUrl"
+        :audio-url="streamAudioUrl"
+        :poster="video ? `/api/bilibili/cover?url=${encodeURIComponent(video.cover)}` : ''"
+        :title="video?.title"
+        :audio-only="playerMode === 'audio'"
+      />
     </section>
 
     <!-- 剪辑器 -->
