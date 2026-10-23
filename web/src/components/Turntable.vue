@@ -51,7 +51,11 @@ function onTap(): void {
           <div class="tt-shine" />
           <div class="tt-label" :style="labelStyle">
             <img v-if="current?.art" class="tt-cover" :src="current.art" alt="" />
-            <span v-else>{{ initial }}</span>
+            <span v-else class="tt-initial">{{ initial }}</span>
+            <!-- 歌手名写在唱片标签上，跟着唱片一起转 -->
+            <span v-if="current?.artist" class="tt-label-artist" :title="current.artist">
+              {{ current.artist }}
+            </span>
           </div>
           <div class="tt-spindle" />
         </div>
@@ -67,8 +71,8 @@ function onTap(): void {
     <!-- 信息（播放控制交给悬浮播放器，这里不重复） -->
     <div class="tt-info">
       <h3 class="tt-title">{{ current?.title ?? '点一张唱片放上来' }}</h3>
-      <p class="tt-artist">{{ current?.artist ?? '唱片墙上的任意一张都行' }}</p>
       <p v-if="player.error" class="tt-error">{{ player.error }}</p>
+      <slot />
     </div>
   </div>
 </template>
@@ -181,10 +185,30 @@ function onTap(): void {
   object-fit: cover;
   border-radius: 50%;
 }
-.tt-label span {
-  color: rgba(255, 255, 255, 0.92);
+.tt-label-artist {
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  max-width: 86%;
+  font-size: 0.42rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.86);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+.tt-label {
+  overflow: hidden;
+}
+.tt-initial {
   font-weight: 700;
   font-size: 1.35rem;
+  color: rgba(255, 255, 255, 0.92);
+}
+.tt-label .tt-initial {
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 .tt-spindle {

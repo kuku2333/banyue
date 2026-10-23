@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { PLAY_MODES, usePlayerStore } from '@/stores/player'
 import PlaylistPicker from '@/components/PlaylistPicker.vue'
-import LyricsPanel from '@/components/LyricsPanel.vue'
 import { api } from '@/lib/api'
 import CommentsPanel from '@/components/CommentsPanel.vue'
 import { formatTime } from '@/lib/music'
@@ -12,27 +11,6 @@ import { hashCode } from '@/lib/cover'
 const player = usePlayerStore()
 const queueOpen = ref(false)
 const pickerOpen = ref(false)
-/* 歌词 */
-const lyricsOpen = ref(false)
-
-async function saveLyrics(text: string): Promise<void> {
-  const track = player.current
-  if (!track) return
-  if (track.id.startsWith('cloud-')) {
-    // 云端曲目前只存本地歌词，先提示（服务端没有歌词字段）
-    editError.value = '云端歌曲暂不支持保存歌词'
-    return
-  }
-  const { listTracks, addTrack } = await import('@/lib/db')
-  const all = await listTracks()
-  const record = all.find((item) => item.id === track.id)
-  if (!record) return
-  await addTrack({ ...record, lyrics: text })
-  const queue = player.queue
-  const index = queue.findIndex((item) => item.id === track.id)
-  if (index >= 0) queue[index] = { ...queue[index]!, lyrics: text }
-  player.markLibraryChanged()
-}
 /* 编辑当前曲目信息 */
 const editOpen = ref(false)
 const editTitle = ref('')
@@ -518,9 +496,6 @@ onBeforeUnmount(() => {
         </button>
         <button type="button" class="p-mode" title="改歌名 / 歌手" @click="openEdit">编辑</button>
         <button type="button" class="p-mode" @click="pickerOpen = true">加入歌单</button>
-        <button type="button" class="p-mode" :class="{ on: lyricsOpen }" @click="lyricsOpen = !lyricsOpen">
-          {{ lyricsOpen ? '收起歌词' : '歌词' }}
-        </button>
         <button type="button" class="p-mode" @click="commentsOpen = true">评论</button>
         <label class="p-vol">
           <svg
@@ -546,14 +521,6 @@ onBeforeUnmount(() => {
           />
         </label>
       </div>
-
-      <LyricsPanel
-        v-if="lyricsOpen"
-        :track="player.current"
-        :current-time="player.currentTime"
-        :lyrics="player.current?.lyrics ?? ''"
-        @load="saveLyrics"
-      />
 
       <p v-if="player.error" class="p-error">{{ player.error }}</p>
     </aside>

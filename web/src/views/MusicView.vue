@@ -8,6 +8,7 @@ import { isLyricFile, readEmbeddedLyrics } from '@/lib/lyrics'
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, syncTracksToCloud, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import BatchBar from '@/components/BatchBar.vue'
 import Turntable from '@/components/Turntable.vue'
+import LyricsPanel from '@/components/LyricsPanel.vue'
 import RecordWall from '@/components/RecordWall.vue'
 import PlaylistPanel from '@/components/PlaylistPanel.vue'
 import PlaylistPicker from '@/components/PlaylistPicker.vue'
@@ -345,6 +346,97 @@ async function refreshLocal(): Promise<void> {
   local.value = await listTracks()
 }
 
+/** 保存歌词到当前播放的本地曲目 */
+async function saveLyrics(text: string): Promise<void> {
+  const track = player.current
+  if (!track) return
+  if (track.id.startsWith('cloud-')) {
+    cloudError.value = '云端歌曲暂不支持保存歌词'
+    return
+  }
+  const records = await listTracks()
+  const record = records.find((item) => item.id === track.id)
+  if (!record) return
+  await addTrack({ ...record, lyrics: text })
+  const queue = player.queue
+  const index = queue.findIndex((item) => item.id === track.id)
+  if (index >= 0) queue[index] = { ...queue[index]!, lyrics: text }
+  player.markLibraryChanged()
+}
+
+/** 一键导出当前列表的所有歌名（每行一句），方便去别处找歌词 */
+function exportTrackNames(): void {
+  const names = local.value.map((item) => item.title).filter(Boolean)
+  if (!names.length) {
+    message.value = '本地还没有歌可以导出'
+    setTimeout(() => (message.value = ''), 3000)
+    return
+  }
+  const text = names.join(String.fromCharCode(10)) + String.fromCharCode(10)
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const anchor2 = document.createElement('a')
+  const stamp = new Date().toISOString().slice(0, 10)
+  anchor2.href = url
+  anchor2.download = `本地歌名-${stamp}.txt`
+  anchor2.click()
+  setTimeout(() => URL.revokeObjectURL(url), 3000)
+  message.value = `已导出 ${names.length} 个歌名`
+  setTimeout(() => (message.value = ''), 3000)
+}
+
+const lyricInput = ref<HTMLInputElement | null>(null)
+const lyricImporting = ref(false)
+
+/** 一键导入歌词：多个 .lrc/.txt，按文件名的歌名去匹配本地歌曲 */
+async function importLyricFiles(files: FileList | File[] | null): Promise<void> {
+  if (!files) return
+  const picked = Array.from(files).filter((file) => isLyricFile(file.name))
+  if (!picked.length) {
+    message.value = '请选择 .lrc 或 .txt 歌词文件'
+    setTimeout(() => (message.value = ''), 3000)
+    return
+  }
+  lyricImporting.value = true
+  let matched = 0
+  let missed = 0
+  try {
+    const records = await listTracks()
+    // 歌名归一化：小写、去掉空白/标点差异，匹配更宽容
+    const norm = (text: string): string =>
+      String(text ?? '')
+        .toLowerCase()
+        .replace(/\s+/g, '')
+        .replace(/[\-_.·、,，。!！?？'"“”（）()\[\]【】]/g, '')
+    const byName = new Map<string, TrackRecord>()
+    for (const item of records) byName.set(norm(item.title), item)
+
+    for (const file of picked) {
+      const baseName = file.name.replace(/\.[^.]+$/, '')
+      const target = byName.get(norm(baseName))
+      if (!target) {
+        missed++
+        continue
+      }
+      const text = await file.text()
+      if (!text.trim()) {
+        missed++
+        continue
+      }
+      await addTrack({ ...target, lyrics: text })
+      matched++
+    }
+    await refreshLocal()
+    message.value = `歌词导入完成：匹配 ${matched} 首${missed ? ` · 没匹配上 ${missed} 个` : ''}`
+    setTimeout(() => (message.value = ''), 5000)
+  } catch (err) {
+    cloudError.value = (err as Error).message
+  } finally {
+    lyricImporting.value = false
+    if (lyricInput.value) lyricInput.value.value = ''
+  }
+}
+
 async function importLocal(files: FileList | File[] | null): Promise<void> {
   if (!files) return
   const all = Array.from(files)
@@ -473,7 +565,15 @@ watch(
 
     <div class="music-stage">
       <aside class="stage-left">
-        <Turntable class="tt-wrap" />
+        <Turntable class="tt-wrap">
+          <LyricsPanel
+            v-if="player.current"
+            :track="player.current"
+            :current-time="player.currentTime"
+            :lyrics="player.current?.lyrics ?? ''"
+            @load="saveLyrics"
+          />
+        </Turntable>
       </aside>
 
       <div class="stage-right">
@@ -601,6 +701,33 @@ watch(
         >
           {{ selectMode ? '完成' : '批量管理' }}
         </button>
+        <button
+          v-if="localTracks.length"
+          type="button"
+          class="btn small-btn"
+          title="导出本地歌曲名，每行一个"
+          @click="exportTrackNames"
+        >
+          导出歌名
+        </button>
+        <button
+          type="button"
+          class="btn small-btn"
+          :disabled="lyricImporting"
+          title="批量选择 .lrc / .txt，按歌名自动匹配"
+          @click="lyricInput?.click()"
+        >
+          {{ lyricImporting ? '导入中…' : '导入歌词' }}
+        </button>
+        <input
+          id="lyric-file-input"
+          ref="lyricInput"
+          type="file"
+          accept=".lrc,.txt,text/plain"
+          multiple
+          hidden
+          @change="(event) => importLyricFiles((event.target as HTMLInputElement).files)"
+        />
         <span class="muted small">支持 mp3 / m4a / flac / wav / ogg，按内容指纹去重</span>
       </div>
       <p v-if="message" class="notice">{{ message }}</p>
