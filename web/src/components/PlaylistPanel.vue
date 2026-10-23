@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { usePlayerStore } from '@/stores/player'
+import { assetUrl } from '@/lib/cloud'
+import { findTrackByHash } from '@/lib/db'
+import type { Track } from '@/lib/music'
 import { listTracks } from '@/lib/db'
 import { listAssets } from '@/lib/cloud'
 import {
@@ -20,6 +24,7 @@ import {
 
 /** 歌单：自己的可编辑/公开，别人的公开歌单可隐藏 */
 const auth = useAuthStore()
+const player = usePlayerStore()
 
 const playlists = ref<PlaylistSummary[]>([])
 const hiddenOnes = ref<{ id: string; name: string; owner: { username: string; displayName: string } }[]>([])
@@ -270,6 +275,53 @@ async function removeItem(itemId: string): Promise<void> {
   }
 }
 
+/**
+ * 点歌单里的唱片就播：把条目还原成 Track。
+ * 云端条用 assetId 直链；本地条按 hash 找本地文件；都没有就跳过。
+ */
+async function playFromPlaylist(startIndex: number): Promise<void> {
+  const current = detail.value
+  if (!current) return
+  const tracks: Track[] = []
+  let mappedStart = 0
+  for (let i = 0; i < current.items.length; i++) {
+    const item = current.items[i]!
+    const assetId = (item as { assetId?: string }).assetId ?? ''
+    const hash = item.hash ?? ''
+    let track: Track | null = null
+    if (assetId) {
+      track = {
+        id: `cloud-${assetId}`,
+        title: item.title,
+        artist: item.artist || '云端上传',
+        source: 'cloud',
+        previewUrl: assetUrl(assetId),
+        hash,
+      }
+    } else if (hash) {
+      const local = await findTrackByHash(hash)
+      if (local) {
+        track = {
+          id: local.id,
+          title: item.title || local.title,
+          artist: item.artist || local.artist,
+          source: 'local',
+          local: true,
+          hash: local.hash,
+        }
+      }
+    }
+    if (!track) continue
+    if (i === startIndex) mappedStart = tracks.length
+    tracks.push(track)
+  }
+  if (!tracks.length) {
+    flash('这些歌还没有可播放的音源（需要先传到云端或导入本地）')
+    return
+  }
+  await player.playList(tracks, mappedStart)
+}
+
 async function hide(id: string): Promise<void> {
   busy.value = true
   try {
@@ -358,7 +410,14 @@ defineExpose({ reload: load })
       </header>
 
       <ol v-if="detail.items.length" class="pl-discs">
-        <li v-for="item in pageItems" :key="item.id" class="pl-disc">
+        <li
+          v-for="(item, idx) in pageItems"
+          :key="item.id"
+          class="pl-disc"
+          :class="{ current: player.current?.title === item.title }"
+          title="点击播放"
+          @click="(event) => !(event.target as HTMLElement).closest('button') && playFromPlaylist(page * PAGE_SIZE + idx)"
+        >
           <div class="pl-vinyl">
             <span class="pl-vinyl-label">{{ item.title.slice(0, 1) }}</span>
           </div>
@@ -615,9 +674,19 @@ defineExpose({ reload: load })
   padding: 8px 4px 6px;
   border-radius: 12px;
   transition: background 0.16s ease;
+  cursor: pointer;
 }
 .pl-disc:hover {
   background: rgba(255, 255, 255, 0.05);
+}
+/* 正在播放的那张 */
+.pl-disc.current .pl-vinyl {
+  box-shadow:
+    0 0 0 2px rgba(76, 194, 255, 0.75),
+    0 6px 18px rgba(0, 0, 0, 0.5);
+}
+.pl-disc.current .pl-disc-title {
+  color: #7cc4ff;
 }
 .pl-vinyl {
   width: 82px;
