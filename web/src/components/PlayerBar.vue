@@ -283,6 +283,8 @@ function drawOrb(): void {
 function onGlobalKeydown(event: KeyboardEvent): void {
   const target = event.target as HTMLElement | null
   if (target && (/^(input|textarea|select)$/i.test(target.tagName) || target.isContentEditable)) return
+  // 焦点在按钮/链接上时，空格是原生「点击」语义，交给它们自己处理，避免和这里来回抵消
+  if (target?.closest('button, a, [role="button"]')) return
   if (!player.current) return
   if (event.code === 'Space' || event.key === ' ') {
     event.preventDefault()

@@ -40,8 +40,8 @@ function onTap(): void {
     :tabindex="canToggle ? 0 : -1"
     :title="canToggle ? (player.playing ? '点击暂停' : '点击继续播放') : '先从右边点一张唱片'"
     @click="onTap"
-    @keydown.enter.prevent="onTap"
-    @keydown.space.prevent="onTap"
+    @keydown.enter.prevent.stop="onTap"
+    @keydown.space.prevent.stop="onTap"
   >
     <!-- 唱盘 -->
     <div class="tt-deck">
