@@ -8,7 +8,6 @@ import { isLyricFile, readEmbeddedLyrics } from '@/lib/lyrics'
 import { assetUrl, deleteAsset, formatSize, getStorage, listAssets, syncTracksToCloud, uploadAsset, type CloudAsset, type StorageUsage } from '@/lib/cloud'
 import BatchBar from '@/components/BatchBar.vue'
 import Turntable from '@/components/Turntable.vue'
-import LyricsPanel from '@/components/LyricsPanel.vue'
 import RecordWall from '@/components/RecordWall.vue'
 import PlaylistPanel from '@/components/PlaylistPanel.vue'
 import PlaylistPicker from '@/components/PlaylistPicker.vue'
@@ -346,24 +345,6 @@ async function refreshLocal(): Promise<void> {
   local.value = await listTracks()
 }
 
-/** 保存歌词到当前播放的本地曲目 */
-async function saveLyrics(text: string): Promise<void> {
-  const track = player.current
-  if (!track) return
-  if (track.id.startsWith('cloud-')) {
-    cloudError.value = '云端歌曲暂不支持保存歌词'
-    return
-  }
-  const records = await listTracks()
-  const record = records.find((item) => item.id === track.id)
-  if (!record) return
-  await addTrack({ ...record, lyrics: text })
-  const queue = player.queue
-  const index = queue.findIndex((item) => item.id === track.id)
-  if (index >= 0) queue[index] = { ...queue[index]!, lyrics: text }
-  player.markLibraryChanged()
-}
-
 /** 一键导出当前列表的所有歌名（每行一句），方便去别处找歌词 */
 function exportTrackNames(): void {
   const names = local.value.map((item) => item.title).filter(Boolean)
@@ -565,15 +546,7 @@ watch(
 
     <div class="music-stage">
       <aside class="stage-left">
-        <Turntable class="tt-wrap">
-          <LyricsPanel
-            v-if="player.current"
-            :track="player.current"
-            :current-time="player.currentTime"
-            :lyrics="player.current?.lyrics ?? ''"
-            @load="saveLyrics"
-          />
-        </Turntable>
+        <Turntable class="tt-wrap" />
       </aside>
 
       <div class="stage-right">
