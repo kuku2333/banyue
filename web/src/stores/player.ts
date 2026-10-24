@@ -13,8 +13,9 @@ export const PLAY_MODES: { id: PlayMode; label: string; icon: string }[] = [
 ]
 
 export const usePlayerStore = defineStore('player', () => {
-  const queue = ref<Track[]>([])
-  const index = ref(-1)
+  // 队列和当前曲目持久化：刷新页面不用重新点一遍
+  const queue = useStorage<Track[]>('banyue:player:queue', [])
+  const index = useStorage<number>('banyue:player:index', -1)
   const playing = ref(false)
   const currentTime = ref(0)
   const duration = ref(0)
@@ -24,6 +25,15 @@ export const usePlayerStore = defineStore('player', () => {
   const favorites = useStorage<Track[]>('banyue:favorites', [])
   const mode = useStorage<PlayMode>('banyue:player:mode', 'order')
   const volume = useStorage<number>('banyue:player:volume', 0.8)
+  /** 倍速：0.5 / 0.75 / 1 / 1.25 / 1.5 / 1.75 / 2 */
+  const rate = useStorage<number>('banyue:player:rate', 1)
+  /** 最近播放（最新在前，最多 30 首） */
+  const recent = useStorage<Track[]>('banyue:player:recent', [])
+  /** 睡眠定时：剩余秒数，0 表示没开 */
+  const sleepRemaining = ref(0)
+  let sleepTimer: ReturnType<typeof setInterval> | null = null
+  /** 淡入淡出时长（毫秒） */
+  const FADE_MS = 260
 
   let audio: HTMLAudioElement | null = null
   let objectUrl: string | null = null
@@ -69,9 +79,14 @@ export const usePlayerStore = defineStore('player', () => {
     })
     element.addEventListener('play', () => {
       playing.value = true
+      updateMediaSession()
     })
     element.addEventListener('pause', () => {
       playing.value = false
+      updateMediaSession()
+    })
+    element.addEventListener('ratechange', () => {
+      rate.value = element.playbackRate
     })
     element.addEventListener('ended', () => {
       void advance()
@@ -119,6 +134,131 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  /* ---------- 淡入淡出 ---------- */
+
+  let fadeRaf = 0
+
+  /** 把音量从当前值渐变到 target，用于切歌不爆音 */
+  function fadeTo(target: number, ms = FADE_MS): Promise<void> {
+    const element = ensureAudio()
+    cancelAnimationFrame(fadeRaf)
+    return new Promise((resolve) => {
+      const from = element.volume
+      const startedAt = performance.now()
+      const step = (now: number) => {
+        const t = Math.min(1, (now - startedAt) / ms)
+        element.volume = Math.min(1, Math.max(0, from + (target - from) * t))
+        if (t < 1) fadeRaf = requestAnimationFrame(step)
+        else resolve()
+      }
+      fadeRaf = requestAnimationFrame(step)
+    })
+  }
+
+  /** 恢复成本次会话设定的音量（淡入结束后的落点） */
+  function restoreVolume(): void {
+    const element = ensureAudio()
+    element.volume = volume.value
+  }
+
+  /* ---------- 系统媒体控制（锁屏 / 通知栏 / 耳机线控） ---------- */
+
+  function updateMediaSession(): void {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
+    const track = current.value
+    if (!track) {
+      navigator.mediaSession.metadata = null
+      return
+    }
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title ?? '未知曲目',
+        artist: track.artist ?? '',
+        album: '半月',
+        artwork: track.art ? [{ src: track.art, sizes: '512x512', type: 'image/jpeg' }] : [],
+      })
+      navigator.mediaSession.playbackState = playing.value ? 'playing' : 'paused'
+    } catch {
+      /* 个别浏览器不支持 MediaMetadata，忽略 */
+    }
+  }
+
+  function bindMediaSession(): void {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
+    const session = navigator.mediaSession
+    const set = (action: MediaSessionAction, handler: () => void): void => {
+      try {
+        session.setActionHandler(action, handler)
+      } catch {
+        /* 不支持的动作会抛错，忽略 */
+      }
+    }
+    set('play', () => void toggle())
+    set('pause', () => void toggle())
+    set('previoustrack', () => void prev())
+    set('nexttrack', () => void next())
+    set('seekbackward', () => seek(progress.value - 0.05))
+    set('seekforward', () => seek(progress.value + 0.05))
+    try {
+      session.setActionHandler('seekto', (details: MediaSessionActionDetails) => {
+        if (details.seekTime != null && duration.value) seek(details.seekTime / duration.value)
+      })
+    } catch {
+      /* 不支持 seekto 的浏览器忽略 */
+    }
+  }
+
+  /* ---------- 睡眠定时 ---------- */
+
+  function clearSleepTimer(): void {
+    if (sleepTimer) {
+      clearInterval(sleepTimer)
+      sleepTimer = null
+    }
+    sleepRemaining.value = 0
+  }
+
+  /** 设定睡眠定时：到点后渐弱暂停 */
+  function setSleepTimer(minutes: number): void {
+    clearSleepTimer()
+    if (minutes <= 0) return
+    sleepRemaining.value = Math.round(minutes * 60)
+    sleepTimer = setInterval(() => {
+      sleepRemaining.value -= 1
+      if (sleepRemaining.value > 0) return
+      clearSleepTimer()
+      // 渐弱再暂停，别把人吓醒
+      void fadeTo(0, 1200).then(() => {
+        ensureAudio().pause()
+        restoreVolume()
+      })
+    }, 1000)
+  }
+
+  /* ---------- 倍速 ---------- */
+
+  const RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+
+  function setRate(value: number): void {
+    const element = ensureAudio()
+    const next = RATES.includes(value) ? value : 1
+    rate.value = next
+    element.playbackRate = next
+  }
+
+  /** 循环切换倍速 */
+  function cycleRate(): void {
+    const at = RATES.indexOf(rate.value)
+    setRate(RATES[(at + 1) % RATES.length]!)
+  }
+
+  /* ---------- 最近播放 ---------- */
+
+  function pushRecent(track: Track): void {
+    const rest = recent.value.filter((item) => item.id !== track.id)
+    recent.value = [track, ...rest].slice(0, 30)
+  }
+
   async function load(target: Track, autoplay = true): Promise<void> {
     // 快速连点切歌时，先发起的那次请求可能后返回；用令牌丢掉过期的结果
     const token = ++loadToken
@@ -136,12 +276,24 @@ export const usePlayerStore = defineStore('player', () => {
       }
       const element = ensureAudio()
       ensureAnalyser(element)
+      // 切歌时先把旧音量淡出，换源后淡入，避免爆音
+      const wasPlaying = !element.paused && element.src
+      if (wasPlaying) await fadeTo(0)
       if (objectUrl && objectUrl !== resolved.url) URL.revokeObjectURL(objectUrl)
       objectUrl = resolved.local ? resolved.url : null
       element.src = resolved.url
+      element.playbackRate = rate.value
       currentTime.value = 0
       duration.value = 0
-      if (autoplay) await element.play()
+      pushRecent(target)
+      updateMediaSession()
+      if (autoplay) {
+        await element.play()
+        if (wasPlaying) await fadeTo(volume.value)
+        else restoreVolume()
+      } else {
+        restoreVolume()
+      }
     } catch {
       if (token === loadToken) {
         error.value = '播放失败，可能是网络或格式问题'
@@ -265,6 +417,24 @@ export const usePlayerStore = defineStore('player', () => {
     index.value = Math.min(index.value, queue.value.length - 1)
   }
 
+  /** 队列内拖动排序：把 from 移到 to，正在播的那首跟着走 */
+  function moveTo(from: number, to: number): void {
+    if (from === to) return
+    if (from < 0 || from >= queue.value.length) return
+    if (to < 0 || to >= queue.value.length) return
+    const currentTrack = current.value
+    const list = [...queue.value]
+    const [moved] = list.splice(from, 1)
+    if (!moved) return
+    list.splice(to, 0, moved)
+    queue.value = list
+    // 重新定位当前曲目，别让正在播的歌变成别的
+    if (currentTrack) {
+      const at = list.findIndex((item) => item.id === currentTrack.id)
+      if (at >= 0) index.value = at
+    }
+  }
+
   function cycleMode(): void {
     const order = PLAY_MODES.map((item) => item.id)
     mode.value = order[(order.indexOf(mode.value) + 1) % order.length]!
@@ -334,6 +504,9 @@ export const usePlayerStore = defineStore('player', () => {
     favorites,
     mode,
     volume,
+    rate,
+    recent,
+    sleepRemaining,
     analyser,
     current,
     libraryRev,
@@ -351,11 +524,18 @@ export const usePlayerStore = defineStore('player', () => {
     advance,
     jumpTo,
     removeAt,
+    moveTo,
     cycleMode,
     setVolume,
     seek,
     close,
     isFavorite,
     toggleFavorite,
+    setRate,
+    cycleRate,
+    setSleepTimer,
+    clearSleepTimer,
+    bindMediaSession,
+    updateMediaSession,
   }
 })

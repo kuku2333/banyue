@@ -12,7 +12,7 @@ import RecordWall from '@/components/RecordWall.vue'
 import PlaylistPanel from '@/components/PlaylistPanel.vue'
 import PlaylistPicker from '@/components/PlaylistPicker.vue'
 
-type Tab = 'local' | 'cloud' | 'charts' | 'search' | 'playlists' | 'favs'
+type Tab = 'local' | 'cloud' | 'charts' | 'search' | 'playlists' | 'favs' | 'recent'
 
 const player = usePlayerStore()
 const auth = useAuthStore()
@@ -39,6 +39,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'search', label: '搜索' },
   { id: 'playlists', label: '歌单' },
   { id: 'favs', label: '收藏' },
+  { id: 'recent', label: '最近' },
 ]
 
 const cloudTracks = ref<CloudAsset[]>([])
@@ -867,6 +868,39 @@ watch(
         </template>
       </RecordWall>
       <p v-else class="empty">还没有收藏。榜单或搜索里点 ★ 加进来。</p>
+    </section>
+
+    <!-- 最近播放 -->
+    <section v-else-if="tab === 'recent'" class="panel">
+      <div class="row-head">
+        <span class="muted small">最近听过 {{ player.recent.length }} 首（最新在前）</span>
+        <div class="head-actions">
+          <button
+            type="button"
+            class="btn small-btn"
+            :disabled="!player.recent.length"
+            @click="playFrom(player.recent, 0)"
+          >
+            播放全部
+          </button>
+          <button
+            type="button"
+            class="btn small-btn"
+            :disabled="!player.recent.length"
+            @click="player.recent = []"
+          >
+            清空记录
+          </button>
+        </div>
+      </div>
+      <RecordWall
+        v-if="player.recent.length"
+        :tracks="player.recent"
+        :current-id="player.current?.id"
+        :playing="player.playing"
+        @play="(index) => playFrom(player.recent, index)"
+      />
+      <p v-else class="empty">还没有播放记录。随便点一首听一下就会出现。</p>
     </section>
 
       </div>

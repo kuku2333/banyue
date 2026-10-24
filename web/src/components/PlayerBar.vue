@@ -169,6 +169,65 @@ function onWheel(event: WheelEvent): void {
   player.setVolume(player.volume + step)
 }
 
+/* ---------- 队列拖拽排序 ---------- */
+
+const dragFrom = ref<number | null>(null)
+const dragTo = ref<number | null>(null)
+
+function onQueueDown(event: PointerEvent, i: number): void {
+  // 点在删除按钮上不启动拖拽
+  if ((event.target as HTMLElement).closest('.q-del')) return
+  dragFrom.value = i
+  dragTo.value = i
+}
+
+function onQueueMove(event: PointerEvent): void {
+  if (dragFrom.value === null) return
+  const el = document.elementFromPoint(event.clientX, event.clientY)
+  const li = el?.closest('li')
+  if (!li || !li.parentElement) return
+  const items = [...li.parentElement.children]
+  const at = items.indexOf(li as HTMLElement)
+  if (at >= 0) dragTo.value = at
+}
+
+function onQueueUp(): void {
+  if (dragFrom.value !== null && dragTo.value !== null && dragFrom.value !== dragTo.value) {
+    player.moveTo(dragFrom.value, dragTo.value)
+  }
+  dragFrom.value = null
+  dragTo.value = null
+}
+
+/* ---------- 睡眠定时 ---------- */
+
+const SLEEP_STEPS = [0, 15, 30, 60, 90]
+
+const sleepLabel = computed(() => {
+  const left = player.sleepRemaining
+  if (left <= 0) return '定时'
+  const m = Math.floor(left / 60)
+  const s = left % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+})
+
+/** 依次循环：关 → 15 → 30 → 60 → 90 → 关 */
+function cycleSleep(): void {
+  if (player.sleepRemaining > 0) {
+    player.clearSleepTimer()
+    return
+  }
+  const used = Number(sessionStorage.getItem('banyue:sleep:last') ?? 0)
+  const at = SLEEP_STEPS.indexOf(used)
+  const next = SLEEP_STEPS[(at + 1) % SLEEP_STEPS.length]!
+  if (next === 0) {
+    player.clearSleepTimer()
+    return
+  }
+  sessionStorage.setItem('banyue:sleep:last', String(next))
+  player.setSleepTimer(next)
+}
+
 /* ---------- 进度条：点击跳转 + 拖动 ---------- */
 
 const seekEl = ref<HTMLElement | null>(null)
@@ -307,6 +366,9 @@ function drawOrb(): void {
 }
 
 /** 全局快捷键：空格暂停/继续；展开状态下 ← → 切歌 */
+/** 静音前的音量，M 键恢复用 */
+let lastVolume = 0.8
+
 function onGlobalKeydown(event: KeyboardEvent): void {
   const target = event.target as HTMLElement | null
   if (target && (/^(input|textarea|select)$/i.test(target.tagName) || target.isContentEditable)) return
@@ -327,6 +389,26 @@ function onGlobalKeydown(event: KeyboardEvent): void {
   } else if (event.key === 'ArrowLeft') {
     event.preventDefault()
     void player.shift(-1)
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    player.setVolume(player.volume + 0.05)
+  } else if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    player.setVolume(player.volume - 0.05)
+  } else if (event.key === 'm' || event.key === 'M') {
+    // 静音开关：记住静音前的音量
+    if (player.volume > 0) {
+      lastVolume = player.volume
+      player.setVolume(0)
+    } else {
+      player.setVolume(lastVolume || 0.8)
+    }
+  } else if (event.key === 'f' || event.key === 'F') {
+    if (player.current) player.toggleFavorite(player.current)
+  } else if (/^[1-9]$/.test(event.key)) {
+    // 数字键跳到 10%~90%
+    event.preventDefault()
+    player.seek(Number(event.key) / 10)
   }
 }
 
@@ -346,6 +428,8 @@ onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown)
   correctPosition()
   window.addEventListener('resize', correctPosition)
+  player.bindMediaSession()
+  player.updateMediaSession()
 })
 
 onBeforeUnmount(() => {
@@ -372,12 +456,14 @@ onBeforeUnmount(() => {
           <span>{{ player.queue.length }} 首 · {{ modeInfo.label }}</span>
           <button type="button" class="p-icon" aria-label="关闭队列" @click="queueOpen = false">×</button>
         </header>
-        <ol>
+        <ol @pointermove="onQueueMove" @pointerup="onQueueUp" @pointercancel="onQueueUp">
           <li
             v-for="(track, i) in player.queue"
             :key="`${track.id}-${i}`"
-            :class="{ on: i === player.index }"
+            :class="{ on: i === player.index, dragging: dragFrom === i, 'drop-target': dragTo === i && dragFrom !== null && dragFrom !== i }"
+            @pointerdown="onQueueDown($event, i)"
           >
+            <span class="q-grip" aria-hidden="true">⋮⋮</span>
             <button type="button" class="q-main" @click="player.jumpTo(i)">
               <b>{{ track.title }}</b>
               <span>{{ track.artist || (track.local ? '本地文件' : '') }}</span>
@@ -529,6 +615,24 @@ onBeforeUnmount(() => {
         <button type="button" class="p-mode" title="改歌名 / 歌手" @click="openEdit">编辑</button>
         <button type="button" class="p-mode" @click="pickerOpen = true">加入歌单</button>
         <button type="button" class="p-mode" @click="commentsOpen = true">评论</button>
+        <button
+          type="button"
+          class="p-mode"
+          :class="{ on: player.rate !== 1 }"
+          title="播放速度"
+          @click="player.cycleRate()"
+        >
+          {{ player.rate }}×
+        </button>
+        <button
+          type="button"
+          class="p-mode"
+          :class="{ on: player.sleepRemaining > 0 }"
+          :title="player.sleepRemaining > 0 ? '点一下取消定时' : '睡眠定时：到点自动暂停'"
+          @click="cycleSleep"
+        >
+          {{ sleepLabel }}
+        </button>
         <label class="p-vol">
           <svg
             viewBox="0 0 24 24"
@@ -849,10 +953,34 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   border-radius: 8px;
+  touch-action: none;
 }
 
 .queue-panel li.on {
   background: var(--accent-soft);
+}
+
+/* 拖拽排序时的反馈 */
+.queue-panel li.dragging {
+  opacity: 0.45;
+}
+
+.queue-panel li.drop-target {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.q-grip {
+  flex: none;
+  padding: 0 2px;
+  color: var(--dim);
+  font-size: 0.7rem;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+}
+
+.queue-panel li:active .q-grip {
+  cursor: grabbing;
 }
 
 .q-main {
@@ -1082,6 +1210,13 @@ onBeforeUnmount(() => {
 .p-mode:hover {
   color: var(--accent);
   border-color: var(--accent-line);
+}
+
+/* 倍速 / 睡眠定时开启时高亮 */
+.p-mode.on {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
 }
 
 .p-vol {
