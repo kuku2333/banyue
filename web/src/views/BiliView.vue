@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { api } from '@/lib/api'
 import { fingerprint } from '@/lib/music'
@@ -170,6 +170,7 @@ async function loadPlay(): Promise<void> {
   error.value = ''
   play.value = null
   trimSrc.value = ''
+  audioCache.value = null
   try {
     const data = await api<PlayInfo>(`/api/bilibili/playinfo?aid=${info.aid}&cid=${page.cid}`)
     play.value = data
@@ -184,6 +185,7 @@ async function loadPlay(): Promise<void> {
 
 async function pickPage(index: number): Promise<void> {
   pageIndex.value = index
+  audioCache.value = null
   await loadPlay()
 }
 
@@ -196,6 +198,11 @@ const selectedVideo = computed<StreamItem | null>(() => {
 })
 
 const selectedAudio = computed<StreamItem | null>(() => play.value?.audios[audioIndex.value] ?? null)
+
+// 换了音轨就作废缓存，避免拿旧文件的字节去保存
+watch(audioIndex, () => {
+  audioCache.value = null
+})
 
 /* 在线播放：视频用 avc 流 + 音频流双流同步 */
 const showPlayer = ref(false)
@@ -244,37 +251,57 @@ function extractAudio(): void {
   setTimeout(() => (extracting.value = false), 300)
 }
 
-/** 分段拉取整段音频（B站 CDN 单连接易断，按 1MB 分块 + 重试） */
+/** 带超时的 fetch：B站 CDN 偶发「连上但一直不返回」，没超时会永久卡在保存中 */
+async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * 分段拉取整段音频（B站 CDN 单连接易断，按 2MB 分块 + 重试）。
+ * 每一步都有超时，探测拿不到总长就退化成整段下载——绝不让保存永久卡住。
+ */
 async function fetchAudioBlob(url: string): Promise<Blob> {
-  // 探测总长：用 1KB 的 Range 并重试（B站 CDN 节点偶发失联）
-  let probe: Response | null = null
-  for (let attempt = 0; attempt < 4; attempt++) {
+  const PROBE_MS = 8000      // 探测总长
+  const CHUNK_MS = 15000     // 单个分块
+  const FULL_MS = 60000      // 整段兜底
+
+  // 探测总长：先用 1KB 的 Range，只为了拿 content-range 里的总长度
+  let total = 0
+  for (let attempt = 0; attempt < 3 && !total; attempt++) {
     try {
-      const response = await fetch(url, { headers: { range: 'bytes=0-1023' } })
+      const response = await fetchWithTimeout(url, { headers: { range: 'bytes=0-1023' } }, PROBE_MS)
       if (response.ok) {
-        probe = response
-        break
+        total = Number(/bytes \d+-\d+\/(\d+)/.exec(response.headers.get('content-range') ?? '')?.[1] ?? 0)
+        // 释放探测的响应体，别把连接挂着
+        await response.arrayBuffer().catch(() => undefined)
       }
     } catch {
-      /* 重试 */
+      /* 超时/失败：下一轮重试 */
     }
-    await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)))
+    if (!total) await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)))
   }
-  if (!probe) throw new Error('读取音频失败，B站 节点不稳定，稍后重试或重新解析')
-  const total = Number(/bytes \d+-\d+\/(\d+)/.exec(probe.headers.get('content-range') ?? '')?.[1] ?? 0)
-  if (!total) {
-    const full = await fetch(url)
+
+  // 拿不到总长或音频很小：直接整段下（实测 5MB 只要几百毫秒，比逐块更快）
+  if (!total || total < 2 << 20) {
+    const full = await fetchWithTimeout(url, {}, FULL_MS)
     if (!full.ok) throw new Error(`读取音频失败（${full.status}）`)
     return full.blob()
   }
-  const chunkSize = 1 << 20
+
+  const chunkSize = 2 << 20
   const parts: Uint8Array[] = []
   for (let start = 0; start < total; start += chunkSize) {
     const end = Math.min(total - 1, start + chunkSize - 1)
     let done = false
-    for (let attempt = 0; attempt < 4 && !done; attempt++) {
+    for (let attempt = 0; attempt < 3 && !done; attempt++) {
       try {
-        const response = await fetch(url, { headers: { range: `bytes=${start}-${end}` } })
+        const response = await fetchWithTimeout(url, { headers: { range: `bytes=${start}-${end}` } }, CHUNK_MS)
         if (response.status === 206 || response.status === 200) {
           const buffer = await response.arrayBuffer()
           if (buffer.byteLength > 0) {
@@ -285,32 +312,42 @@ async function fetchAudioBlob(url: string): Promise<Blob> {
       } catch {
         /* 重试 */
       }
-      if (!done) await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)))
+      if (!done && attempt < 2) await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)))
     }
     if (!done) throw new Error('音频下载中断，链接可能过期，重新解析一次')
   }
   return new Blob(parts as BlobPart[], { type: 'audio/mp4' })
 }
 
+/** 已下载的音频缓存：保存到本地/云端共用，避免同一个文件重复下载两遍 */
+const audioCache = ref<{ key: string; blob: Blob } | null>(null)
+
 /** 下载整段音频；失败了自动重新解析一次（B站 链接会过期 / 节点会抖） */
 async function fetchAudioWithRefresh(): Promise<Blob> {
   const item = selectedAudio.value
   if (!item) throw new Error('没有可用的音轨')
+  // 同一条音轨 + 同一标题，直接复用上次下载的，第二个按钮就能秒开
+  const key = `${item.url}|${trackName.value}`
+  if (audioCache.value?.key === key) return audioCache.value.blob
+  let blob: Blob
   try {
-    return await fetchAudioBlob(proxyUrl(item.url))
+    blob = await fetchAudioBlob(proxyUrl(item.url))
   } catch {
     // 链接过期或节点失联：重新取一次 playurl 再试
     await loadPlay()
     const fresh = selectedAudio.value
     if (!fresh) throw new Error('音频链接已失效，重新解析一次视频')
-    return await fetchAudioBlob(proxyUrl(fresh.url))
+    blob = await fetchAudioBlob(proxyUrl(fresh.url))
   }
+  audioCache.value = { key, blob }
+  return blob
 }
 
-/** 把视频封面压成小图 dataURL（320px，约 30KB），用于唱片封面 */
+/** 把视频封面压成小图 dataURL（240px，约 30KB），用于唱片封面 */
 async function compressCover(url: string): Promise<string> {
   try {
-    const response = await fetch(url)
+    // 封面挂起不该拖垮整个保存：8 秒拿不到就跳过封面
+    const response = await fetchWithTimeout(url, {}, 8000)
     if (!response.ok) return ''
     const blob = await response.blob()
     const bitmap = await createImageBitmap(blob)
@@ -349,6 +386,9 @@ const trackName = computed(() => {
   return chunk.trim().slice(0, 80)
 })
 
+/** 保存阶段提示：让用户知道在下载而不是卡死 */
+const savePhase = ref('')
+
 /** 保存到本地音乐库（IndexedDB，按指纹判重） */
 async function saveToLocal(): Promise<void> {
   const item = selectedAudio.value
@@ -356,12 +396,15 @@ async function saveToLocal(): Promise<void> {
   saveMessage.value = ''
   saveError.value = ''
   savingLocal.value = true
+  savePhase.value = '正在下载音频…'
   try {
     const blob = await fetchAudioWithRefresh()
     const buffer = await blob.arrayBuffer()
+    savePhase.value = '正在处理封面…'
+    const cover = await currentCover()
+    savePhase.value = '正在写入本地音乐库…'
     const hash = await fingerprint(buffer, `${trackName.value}-${blob.size}`)
     const existing = await findTrackByHash(hash)
-    const cover = await currentCover()
     if (existing) {
       // 之前没封面、这次勾选了就补上，不重复占空间
       if (cover && !existing.cover) await addTrack({ ...existing, cover })
@@ -383,6 +426,7 @@ async function saveToLocal(): Promise<void> {
     flash((err as Error).message || '保存到本地失败', true)
   } finally {
     savingLocal.value = false
+    savePhase.value = ''
   }
 }
 
@@ -397,15 +441,18 @@ async function saveToCloud(): Promise<void> {
   saveMessage.value = ''
   saveError.value = ''
   savingCloud.value = true
+  savePhase.value = '正在下载音频…'
   try {
     const blob = await fetchAudioWithRefresh()
     const buffer = await blob.arrayBuffer()
+    savePhase.value = '正在检查云端是否已有…'
     const hash = await fingerprint(buffer, `${trackName.value}-${blob.size}`)
     // 云端已有同指纹：只补封面（不重复传 5MB 音频）
     try {
       const existing = await listAssets('track')
       const same = existing.find((asset) => asset.hash && asset.hash === hash)
       if (same) {
+        savePhase.value = '正在处理封面…'
         const cover = await currentCover()
         if (cover && !same.cover) {
           await api(`/api/assets/${encodeURIComponent(same.id)}/cover`, { method: 'POST', body: { cover } })
@@ -418,7 +465,9 @@ async function saveToCloud(): Promise<void> {
     } catch {
       /* 查不到就让服务端判重 */
     }
+    savePhase.value = '正在处理封面…'
     const cover = await currentCover()
+    savePhase.value = `正在上传（${(blob.size / 1048576).toFixed(1)}MB）…`
     const result = await uploadAsset('track', blob, {
       title: trackName.value,
       subtitle: video.value?.owner ?? '',
@@ -431,6 +480,7 @@ async function saveToCloud(): Promise<void> {
     flash((err as Error).message || '保存到云端失败', true)
   } finally {
     savingCloud.value = false
+    savePhase.value = ''
   }
 }
 </script>
@@ -589,7 +639,7 @@ async function saveToCloud(): Promise<void> {
               title="存进浏览器本地音乐库，可在「听歌 → 本地音乐」里播放"
               @click="saveToLocal"
             >
-              {{ savingLocal ? '保存中…' : '保存到本地音乐' }}
+              {{ savingLocal ? (savePhase || '保存中…') : '保存到本地音乐' }}
             </button>
             <button
               type="button"
@@ -598,7 +648,7 @@ async function saveToCloud(): Promise<void> {
               title="上传到云端音乐库，登录后所有人可听"
               @click="saveToCloud"
             >
-              {{ savingCloud ? '上传中…' : '保存到云端音乐' }}
+              {{ savingCloud ? (savePhase || '上传中…') : '保存到云端音乐' }}
             </button>
           </div>
           <label class="cover-check">
