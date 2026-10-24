@@ -6,10 +6,10 @@ import { resolvePreview } from '@/lib/music'
 
 export type PlayMode = 'order' | 'repeat' | 'shuffle'
 
-export const PLAY_MODES: { id: PlayMode; label: string; icon: string }[] = [
-  { id: 'order', label: '顺序播放', icon: '→' },
-  { id: 'repeat', label: '单曲循环', icon: '↻' },
-  { id: 'shuffle', label: '随机播放', icon: '⇄' },
+export const PLAY_MODES: { id: PlayMode; label: string; short: string; icon: string }[] = [
+  { id: 'order', label: '顺序播放', short: '顺序', icon: '→' },
+  { id: 'repeat', label: '单曲循环', short: '单曲', icon: '↻' },
+  { id: 'shuffle', label: '随机播放', short: '随机', icon: '⇄' },
 ]
 
 export const usePlayerStore = defineStore('player', () => {

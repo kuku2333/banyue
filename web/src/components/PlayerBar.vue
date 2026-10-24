@@ -610,11 +610,7 @@ onBeforeUnmount(() => {
       <div class="p-extra">
         <button type="button" class="p-mode" :title="modeInfo.label" @click="player.cycleMode()">
           <span aria-hidden="true">{{ modeInfo.icon }}</span
-          >{{ modeInfo.label }}
-        </button>
-        <button type="button" class="p-mode" title="改歌名 / 歌手" @click="openEdit">编辑</button>
-        <button type="button" class="p-mode" @click="pickerOpen = true">加入歌单</button>
-        <button type="button" class="p-mode" @click="commentsOpen = true">评论</button>
+          >{{ modeInfo.short }}</button>
         <button
           type="button"
           class="p-mode"
@@ -633,29 +629,33 @@ onBeforeUnmount(() => {
         >
           {{ sleepLabel }}
         </button>
-        <label class="p-vol">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M4 9v6h4l5 4V5L8 9z" />
-            <path d="M17 8.5a5 5 0 010 7" />
-          </svg>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            :value="player.volume"
-            aria-label="音量"
-            @input="onVolume"
-          />
-        </label>
+        <button type="button" class="p-mode" title="改歌名 / 歌手" @click="openEdit">编辑</button>
+        <button type="button" class="p-mode" @click="pickerOpen = true">歌单</button>
+        <button type="button" class="p-mode" @click="commentsOpen = true">评论</button>
+      </div>
+
+      <div class="p-vol">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 9v6h4l5 4V5L8 9z" />
+          <path d="M17 8.5a5 5 0 010 7" />
+        </svg>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          :value="player.volume"
+          aria-label="音量"
+          @input="onVolume"
+        />
       </div>
 
       <p v-if="player.error" class="p-error">{{ player.error }}</p>
@@ -1186,24 +1186,33 @@ onBeforeUnmount(() => {
 }
 
 .p-extra {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
 
 .p-mode {
-  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 6px;
   border-radius: 8px;
   border: 1px solid var(--line);
   color: var(--text-2);
   font-size: 0.72rem;
+  line-height: 1.3;
+  /* 关键：禁止文字竖排（被挤窄时会逐字换行） */
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .p-mode span {
-  margin-right: 6px;
   color: var(--accent);
 }
 
@@ -1219,21 +1228,26 @@ onBeforeUnmount(() => {
   background: var(--accent-soft);
 }
 
+/* 音量独占一行，横向铺满，不再挤在按钮行末尾 */
 .p-vol {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-left: auto;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
   color: var(--dim);
 }
 
 .p-vol svg {
-  width: 14px;
-  height: 14px;
+  flex: none;
+  width: 15px;
+  height: 15px;
 }
 
 .p-vol input {
-  width: 74px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
   accent-color: var(--accent);
 }
 
