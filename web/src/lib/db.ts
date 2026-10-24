@@ -63,6 +63,46 @@ export interface LocalSongNote {
   createdAt: number
 }
 
+/* ---------------- 数学草稿本 ---------------- */
+
+/** 一个数学本子：多页，每页一块草稿画布 + 一个坐标系 */
+export interface MathNotebook {
+  id: string
+  name: string
+  createdAt: number
+  updatedAt: number
+  /** 当前页码（0-based） */
+  currentPage: number
+}
+
+export interface MathPage {
+  id: string
+  notebookId: string
+  index: number
+  /** 草稿画布数据（JSON 字符串，由 SketchCanvas 序列化） */
+  sketch: string
+  /** 坐标系里的函数表达式列表 */
+  functions: { expr: string; color: string; visible: boolean }[]
+  /** 坐标系里的几何元素（点/线/切线/法线/垂线） */
+  geometry: {
+    id: string
+    type: 'line' | 'tangent' | 'normal' | 'perpendicular' | 'point'
+    x1: number
+    y1: number
+    x2: number
+    y2: number
+    color: string
+    /** 关联的函数表达式（切线/法线/垂线用） */
+    expr?: string
+    /** 关联的几何线 id（垂线用） */
+    refId?: string
+  }[]
+  /** 坐标系视口（world 坐标范围） */
+  view: { cx: number; cy: number; scale: number }
+  createdAt: number
+  updatedAt: number
+}
+
 class BanyueDatabase extends Dexie {
   books!: Table<BookRecord, string>
   texts!: Table<TextRecord, string>
@@ -70,6 +110,8 @@ class BanyueDatabase extends Dexie {
   drafts!: Table<DraftRecord, string>
   localBookmarks!: Table<LocalBookmark, string>
   songNotes!: Table<LocalSongNote, string>
+  mathNotebooks!: Table<MathNotebook, string>
+  mathPages!: Table<MathPage, string>
 
   constructor() {
     super('banyue-reader')
@@ -84,6 +126,10 @@ class BanyueDatabase extends Dexie {
     this.version(3).stores({
       localBookmarks: 'id, bookKey',
       songNotes: 'id, trackId',
+    })
+    this.version(4).stores({
+      mathNotebooks: 'id, updatedAt',
+      mathPages: 'id, notebookId, index',
     })
   }
 }
@@ -199,4 +245,71 @@ export async function addSongNote(note: LocalSongNote): Promise<void> {
 
 export async function deleteSongNote(id: string): Promise<void> {
   await db().songNotes.delete(id)
+}
+
+/* ---------------- 数学草稿本 ---------------- */
+
+export function newId(prefix = 'id'): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+export async function listMathNotebooks(): Promise<MathNotebook[]> {
+  return db().mathNotebooks.orderBy('updatedAt').reverse().toArray()
+}
+
+export async function getMathNotebook(id: string): Promise<MathNotebook | undefined> {
+  return db().mathNotebooks.get(id)
+}
+
+export async function putMathNotebook(notebook: MathNotebook): Promise<void> {
+  await db().mathNotebooks.put(notebook)
+}
+
+export async function deleteMathNotebook(id: string): Promise<void> {
+  await db().transaction('rw', db().mathNotebooks, db().mathPages, async () => {
+    await db().mathNotebooks.delete(id)
+    await db().mathPages.where('notebookId').equals(id).delete()
+  })
+}
+
+export async function listMathPages(notebookId: string): Promise<MathPage[]> {
+  return db().mathPages.where('notebookId').equals(notebookId).sortBy('index')
+}
+
+export async function getMathPage(id: string): Promise<MathPage | undefined> {
+  return db().mathPages.get(id)
+}
+
+export async function putMathPage(page: MathPage): Promise<void> {
+  await db().mathPages.put(page)
+}
+
+export async function deleteMathPage(id: string): Promise<void> {
+  await db().mathPages.delete(id)
+}
+
+/** 新建一页空草稿（附默认视口） */
+export function emptyMathPage(notebookId: string, index: number): MathPage {
+  return {
+    id: newId('mp'),
+    notebookId,
+    index,
+    sketch: '',
+    functions: [],
+    geometry: [],
+    view: { cx: 0, cy: 0, scale: 60 },
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+}
+
+export function emptyMathNotebook(name: string): MathNotebook {
+  const now = Date.now()
+  return {
+    id: newId('mn'),
+    name: name || '未命名草稿',
+    createdAt: now,
+    updatedAt: now,
+    currentPage: 0,
+  }
 }

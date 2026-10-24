@@ -31,6 +31,12 @@ const tabs = [
     d: 'M7 18a2.6 2.6 0 105.2 0V7.4l8-1.6v9.8',
   },
   {
+    to: '/math',
+    name: 'math',
+    label: '数学',
+    d: 'M4 4h16v16H4zM4 16l5-5 4 4 6-7',
+  },
+  {
     to: '/bili',
     name: 'bili',
     label: '下载',

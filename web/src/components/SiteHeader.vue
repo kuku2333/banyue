@@ -26,6 +26,7 @@ interface NavLink {
 const links: NavLink[] = [
   { to: '/', label: '首页', names: ['home', 'post', 'tag'] },
   { to: '/shelf', label: '书架', names: ['shelf', 'read'] },
+  { to: '/math', label: '数学', names: ['math'] },
   { to: '/bili', label: '下载', names: ['bili'] },
   { to: '/about', label: '关于', names: ['about'] },
 ]

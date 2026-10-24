@@ -18,6 +18,12 @@ const routes: RouteRecordRaw[] = [
   },
   { path: '/music', name: 'music', component: () => import('@/views/MusicView.vue'), meta: { title: '听歌 · 半月' } },
   {
+    path: '/math',
+    name: 'math',
+    component: () => import('@/views/MathView.vue'),
+    meta: { title: '数学工具 · 半月' },
+  },
+  {
     path: '/bili',
     name: 'bili',
     component: () => import('@/views/BiliView.vue'),
