@@ -169,10 +169,37 @@ function onWheel(event: WheelEvent): void {
   player.setVolume(player.volume + step)
 }
 
-function onSeek(event: MouseEvent): void {
-  const target = event.currentTarget as HTMLElement
-  const rect = target.getBoundingClientRect()
-  player.seek((event.clientX - rect.left) / rect.width)
+/* ---------- 进度条：点击跳转 + 拖动 ---------- */
+
+const seekEl = ref<HTMLElement | null>(null)
+
+function seekAt(clientX: number): void {
+  const el = seekEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  if (!rect.width) return
+  player.seek((clientX - rect.left) / rect.width)
+}
+
+function onSeekMove(event: PointerEvent): void {
+  seekAt(event.clientX)
+}
+
+function onSeekUp(): void {
+  window.removeEventListener('pointermove', onSeekMove)
+  window.removeEventListener('pointerup', onSeekUp)
+  window.removeEventListener('pointercancel', onSeekUp)
+}
+
+/** 按下即跳到该位置，然后跟着手指/鼠标继续拖 */
+function startSeek(event: PointerEvent): void {
+  if (!player.duration) return
+  event.preventDefault()
+  event.stopPropagation()
+  seekAt(event.clientX)
+  window.addEventListener('pointermove', onSeekMove)
+  window.addEventListener('pointerup', onSeekUp)
+  window.addEventListener('pointercancel', onSeekUp)
 }
 
 function onVolume(event: Event): void {
@@ -409,12 +436,17 @@ onBeforeUnmount(() => {
       <canvas ref="canvasEl" class="p-spectrum" width="600" height="56" aria-hidden="true" />
 
       <div
+        ref="seekEl"
         class="p-bar"
         role="slider"
+        tabindex="0"
         :aria-valuenow="Math.round(player.progress * 100)"
         aria-valuemin="0"
         aria-valuemax="100"
-        @click="onSeek"
+        :aria-label="`播放进度 ${formatTime(player.currentTime)} / ${formatTime(player.duration)}`"
+        @pointerdown="startSeek"
+        @keydown.left.prevent="player.seek(player.progress - 0.01)"
+        @keydown.right.prevent="player.seek(player.progress + 0.01)"
       >
         <i :style="{ width: `${player.progress * 100}%` }" />
       </div>
@@ -931,20 +963,45 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
 }
 
+/* 可见的细条只有 4px，但热区撑到 22px——否则很难点中 */
 .p-bar {
   position: relative;
+  height: 22px;
+  margin: 3px 0 0;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+
+/* 细条本体：用伪元素画，热区不受影响 */
+.p-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
   height: 4px;
-  margin: 12px 0 10px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.1);
-  cursor: pointer;
 }
 
 .p-bar i {
+  position: relative;
   display: block;
-  height: 100%;
+  height: 4px;
   border-radius: 4px;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  pointer-events: none;
+}
+
+/* 拖动/悬停时给个抓取反馈 */
+.p-bar:hover::before {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.p-bar:focus-visible::before {
+  box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.5);
 }
 
 .p-controls {
