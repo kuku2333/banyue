@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import PostCard from '@/components/PostCard.vue'
 import { blogStats, posts, tagStats } from '@/lib/content'
 import { useModerationStore } from '@/stores/moderation'
 import { coverSvg } from '@/lib/cover'
 import { formatDate } from '@/lib/format'
 import { formatCount } from '@/lib/format'
+import { progressLabel, recentReading } from '@/lib/reading'
 
 const moderation = useModerationStore()
+const route = useRoute()
 const visiblePosts = computed(() => moderation.visible(posts))
 const stats = computed(() => blogStats(visiblePosts.value))
 const tags = computed(() => tagStats(visiblePosts.value).slice(0, 8))
@@ -19,6 +22,30 @@ const filtered = computed(() =>
   activeTag.value === '全部'
     ? visiblePosts.value
     : visiblePosts.value.filter((post) => post.tags.includes(activeTag.value)),
+)
+
+/**
+ * 继续阅读：最近读过但没读完的文章。
+ * 数据在 localStorage，不是响应式的，所以挂载和路由回首页时都要重读。
+ */
+const resume = ref<{ slug: string; ratio: number; touched: number; title: string; date: string }[]>([])
+
+function loadResume(): void {
+  const entries = recentReading(visiblePosts.value.map((post) => post.slug), 3)
+  resume.value = entries
+    .map((entry) => {
+      const post = visiblePosts.value.find((item) => item.slug === entry.slug)
+      return post ? { ...entry, title: post.title, date: post.date } : null
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+}
+
+onMounted(loadResume)
+// 从文章页退回首页时组件可能被复用，路由一变就刷新
+import { watch } from 'vue'
+watch(
+  () => route.fullPath,
+  () => loadResume(),
 )
 </script>
 
@@ -50,6 +77,30 @@ const filtered = computed(() =>
   </section>
 
   <div class="shell">
+    <!-- 继续阅读：只在有未读完的文章时出现，不占常驻版面 -->
+    <section v-if="resume.length" class="resume" aria-label="继续阅读">
+      <div class="section-title">
+        <h2>继续阅读</h2>
+        <span class="muted small">上次停在这里</span>
+      </div>
+      <div class="resume-list">
+        <RouterLink
+          v-for="item in resume"
+          :key="item.slug"
+          class="resume-item"
+          :to="`/post/${item.slug}`"
+        >
+          <div class="resume-main">
+            <b>{{ item.title }}</b>
+            <span class="muted small">{{ formatDate(item.date) }} · {{ progressLabel(item.ratio) }}</span>
+          </div>
+          <div class="resume-bar" aria-hidden="true">
+            <i :style="{ width: `${Math.round(item.ratio * 100)}%` }" />
+          </div>
+        </RouterLink>
+      </div>
+    </section>
+
     <article v-if="featured" class="featured">
       <div class="featured__art" v-html="featuredCover" />
       <div class="featured__body">

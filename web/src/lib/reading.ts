@@ -28,11 +28,30 @@ export function saveProgress(slug: string, ratio: number): void {
   try {
     if (ratio <= MIN || ratio >= DONE) {
       localStorage.removeItem(positionKeyOf(slug))
+      localStorage.removeItem(touchedKeyOf(slug))
       return
     }
     localStorage.setItem(positionKeyOf(slug), String(ratio))
+    // 记下最后阅读时间：首页「继续阅读」按它排序，而不是按进度高低
+    localStorage.setItem(touchedKeyOf(slug), String(Date.now()))
   } catch {
     /* 隐私模式写不进去，忽略 */
+  }
+}
+
+/** 最后阅读时间戳的键；没读过返回 0 */
+function touchedKeyOf(slug: string): string {
+  return `banyue:touched:${slug}`
+}
+
+export function readTouched(slug: string): number {
+  try {
+    const raw = localStorage.getItem(touchedKeyOf(slug))
+    if (raw === null) return 0
+    const value = Number(raw)
+    return Number.isFinite(value) ? value : 0
+  } catch {
+    return 0
   }
 }
 
@@ -51,4 +70,20 @@ export function allProgress(slugs: string[]): { slug: string; ratio: number }[] 
     if (ratio >= MIN) out.push({ slug, ratio })
   }
   return out.sort((a, b) => b.ratio - a.ratio)
+}
+
+/**
+ * 「继续阅读」列表：最近读过的、还没读完的文章，按最后阅读时间倒序。
+ * 与 allProgress 的区别是排序依据——这里是「最近」，那边是「读得最多」。
+ */
+export function recentReading(slugs: string[], limit = 3): { slug: string; ratio: number; touched: number }[] {
+  const out: { slug: string; ratio: number; touched: number }[] = []
+  for (const slug of slugs) {
+    const ratio = readProgress(slug)
+    if (ratio < MIN) continue
+    out.push({ slug, ratio, touched: readTouched(slug) })
+  }
+  return out
+    .sort((a, b) => b.touched - a.touched)
+    .slice(0, limit)
 }
