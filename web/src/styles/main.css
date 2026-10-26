@@ -1320,13 +1320,16 @@ svg {
   inset: auto 0 0 0;
   z-index: 70;
   padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
-  background: rgba(10, 14, 19, 0.92);
+  /* 跟随主题，原来硬编码深色，亮色下会变成一条黑边 */
+  background: var(--bg-soft);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--line);
 }
 
 .tabs a {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1335,15 +1338,39 @@ svg {
   min-height: 44px;
   color: var(--dim);
   font-size: 0.68rem;
+  /* 窄屏下文字不能被挤成竖排 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tabs a.on {
   color: var(--accent);
+  /* 当前项加一条顶部指示条，比只变色更好认 */
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
 .tabs svg {
   width: 20px;
   height: 20px;
+  flex: none;
+}
+
+/* 超窄屏（≤360px）：图标缩小、字号降一档，五个 tab 仍放得下 */
+@media (max-width: 360px) {
+  .tabs {
+    padding-inline: 4px;
+  }
+
+  .tabs a {
+    font-size: 0.62rem;
+    gap: 2px;
+  }
+
+  .tabs svg {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 /* ---------- 搜索层 ---------- */
