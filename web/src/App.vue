@@ -8,6 +8,7 @@ import SearchOverlay from '@/components/SearchOverlay.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
 import AuthDialog from '@/components/AuthDialog.vue'
 import BackupDialog from '@/components/BackupDialog.vue'
+import ShortcutHelp from '@/components/ShortcutHelp.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useModerationStore } from '@/stores/moderation'
 import { useThemeStore } from '@/stores/theme'
@@ -18,6 +19,7 @@ const moderation = useModerationStore()
 const theme = useThemeStore()
 const searchOpen = ref(false)
 const backupOpen = ref(false)
+const shortcutOpen = ref(false)
 const progress = ref(0)
 /** 系统主题监听器的清理函数 */
 let unwatchSystem: (() => void) | null = null
@@ -28,12 +30,28 @@ function onScroll(): void {
   progress.value = max > 0 ? Math.min(100, Math.max(0, (doc.scrollTop / max) * 100)) : 0
 }
 
+function isTyping(): boolean {
+  const el = document.activeElement as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable
+}
+
 function onKeydown(event: KeyboardEvent): void {
+  // ? 键（Shift + /）打开快捷键帮助，输入状态下不打断
+  if (event.key === '?' && !isTyping()) {
+    event.preventDefault()
+    shortcutOpen.value = true
+    return
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault()
     searchOpen.value = true
   }
-  if (event.key === 'Escape') searchOpen.value = false
+  if (event.key === 'Escape') {
+    searchOpen.value = false
+    shortcutOpen.value = false
+  }
 }
 
 onMounted(() => {
@@ -78,12 +96,13 @@ watch(
     </RouterView>
   </main>
 
-  <SiteFooter />
+  <SiteFooter @open-shortcuts="shortcutOpen = true" />
   <MobileTabs />
   <PlayerBar />
   <AuthDialog v-model:open="auth.dialogOpen" />
   <SearchOverlay v-model:open="searchOpen" />
   <BackupDialog v-model:open="backupOpen" />
+  <ShortcutHelp :open="shortcutOpen" @close="shortcutOpen = false" />
 </template>
 
 <style scoped>
