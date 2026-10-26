@@ -657,6 +657,7 @@ async function saveToCloud(): Promise<void> {
             <img
               v-if="useCover && video"
               class="cover-preview"
+              loading="lazy"
               :src="`/api/bilibili/cover?url=${encodeURIComponent(video.cover)}`"
               alt=""
             />

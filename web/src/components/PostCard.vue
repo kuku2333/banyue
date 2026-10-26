@@ -5,8 +5,14 @@ import type { Post } from '@/lib/content'
 import { coverSvg } from '@/lib/cover'
 import { formatDate } from '@/lib/format'
 import { progressLabel, readProgress } from '@/lib/reading'
+import { bindPrefetch } from '@/lib/prefetch'
 
 const props = defineProps<{ post: Post }>()
+const cardRef = ref<{ $el?: HTMLElement } | null>(null)
+onMounted(() => {
+  const el = cardRef.value?.$el
+  if (el) bindPrefetch(el as HTMLElement, 'post')
+})
 const cover = computed(() => coverSvg(props.post.slug))
 const route = useRoute()
 
@@ -34,7 +40,7 @@ const label = computed(() => progressLabel(progress.value))
 </script>
 
 <template>
-  <RouterLink class="post-card" :to="`/post/${post.slug}`">
+  <RouterLink ref="cardRef" class="post-card" :to="`/post/${post.slug}`">
     <div class="post-card__cover" v-html="cover" />
     <div class="post-card__body">
       <h3>{{ post.title }}</h3>

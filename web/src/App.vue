@@ -12,6 +12,7 @@ import ShortcutHelp from '@/components/ShortcutHelp.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useModerationStore } from '@/stores/moderation'
 import { useThemeStore } from '@/stores/theme'
+import { prefetchOnIdle } from '@/lib/prefetch'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -71,6 +72,27 @@ onUnmounted(() => {
 })
 
 const isPost = computed(() => route.name === 'post')
+
+// 进入某页后，空闲时预取「相邻」路由，点过去几乎瞬时。
+// 首页预取归档/标签/关于；文章页预取归档/标签；其余页预取首页。
+const PREFETCH: Record<string, string[]> = {
+  home: ['archive', 'tags', 'about'],
+  post: ['archive', 'tags', 'home'],
+  tags: ['archive', 'post', 'home'],
+  tag: ['post', 'archive'],
+  archive: ['post', 'tags', 'home'],
+  shelf: ['read', 'home'],
+  music: ['home'],
+  math: ['home'],
+}
+watch(
+  () => route.name,
+  (name) => {
+    const targets = PREFETCH[String(name ?? 'home')] ?? ['home']
+    prefetchOnIdle(targets)
+  },
+  { immediate: true },
+)
 
 // 换页后如果已经在顶部，浏览器不会派发 scroll 事件，进度条会停在上一条文章的位置
 watch(
