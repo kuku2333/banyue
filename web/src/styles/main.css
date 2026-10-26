@@ -476,6 +476,26 @@ svg {
 
 /* ---------- 布局骨架 ---------- */
 
+/* 键盘用户「跳到正文」链接：默认移出屏幕，聚焦时出现 */
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 12px;
+  z-index: 200;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--on-accent, #06211d);
+  font-weight: 600;
+  transition: top 0.16s ease;
+}
+
+.skip-link:focus {
+  top: 12px;
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
 .main {
   min-height: 60vh;
   padding-bottom: 64px;

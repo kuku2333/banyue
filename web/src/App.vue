@@ -84,6 +84,8 @@ watch(
 </script>
 
 <template>
+  <a class="skip-link" href="#main">跳到正文</a>
+
   <div class="progress" :style="{ width: `${progress}%`, opacity: isPost ? 1 : 0 }" aria-hidden="true" />
 
   <SiteHeader @open-search="searchOpen = true" @open-backup="backupOpen = true" />
