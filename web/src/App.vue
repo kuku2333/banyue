@@ -9,12 +9,16 @@ import PlayerBar from '@/components/PlayerBar.vue'
 import AuthDialog from '@/components/AuthDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useModerationStore } from '@/stores/moderation'
+import { useThemeStore } from '@/stores/theme'
 
 const route = useRoute()
 const auth = useAuthStore()
 const moderation = useModerationStore()
+const theme = useThemeStore()
 const searchOpen = ref(false)
 const progress = ref(0)
+/** 系统主题监听器的清理函数 */
+let unwatchSystem: (() => void) | null = null
 
 function onScroll(): void {
   const doc = document.documentElement
@@ -34,6 +38,8 @@ onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
   window.addEventListener('keydown', onKeydown)
   onScroll()
+  theme.apply()
+  unwatchSystem = theme.watchSystem()
   void auth.ensure()
   void moderation.load()
 })
@@ -41,6 +47,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('scroll', onScroll)
   window.removeEventListener('keydown', onKeydown)
+  unwatchSystem?.()
 })
 
 const isPost = computed(() => route.name === 'post')

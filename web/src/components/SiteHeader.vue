@@ -3,11 +3,17 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { onClickOutside } from '@vueuse/core'
 import { useAuthStore } from '@/stores/auth'
+import { THEME_MODES, useThemeStore } from '@/stores/theme'
 
 const emit = defineEmits<{ 'open-search': [] }>()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const theme = useThemeStore()
+
+const themeInfo = computed(
+  () => THEME_MODES.find((item) => item.id === theme.mode) ?? THEME_MODES[0]!,
+)
 
 const menuOpen = ref(false)
 const menuError = ref('')
@@ -95,6 +101,15 @@ function goCollections(): void {
           <circle cx="11" cy="11" r="7" />
           <path d="M20 20l-3.5-3.5" />
         </svg>
+      </button>
+      <button
+        class="icon-btn theme-btn"
+        type="button"
+        :aria-label="`主题：${themeInfo.label}（点击切换）`"
+        :title="`主题：${themeInfo.label}`"
+        @click="theme.cycle()"
+      >
+        <span aria-hidden="true">{{ themeInfo.icon }}</span>
       </button>
 
       <div ref="accountRef" class="account">
