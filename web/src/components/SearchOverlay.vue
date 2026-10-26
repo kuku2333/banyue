@@ -23,6 +23,7 @@ const entries = ref<SearchEntry[]>([])
 const loadingLibrary = ref(false)
 
 const results = computed<SearchItem[]>(() => runSearch(keyword.value, entries.value))
+const resultsEl = ref<HTMLElement | null>(null)
 
 /** 空关键词时给几篇最近的，别让框里空着 */
 const fallback = computed(() =>
@@ -96,6 +97,21 @@ function onKeydown(event: KeyboardEvent): void {
     if (target) activate(target)
   }
 }
+
+// 键盘上下移动时，确保高亮项始终在视野内（列表可滚动时）
+watch(activeIndex, async (idx) => {
+  await nextTick()
+  const items = resultsEl.value?.querySelectorAll<HTMLElement>('.search-item')
+  items?.[idx]?.scrollIntoView({ block: 'nearest' })
+})
+
+// 结果集变短时把高亮收回到有效区间，避免空激活
+watch(
+  () => shown.value.length,
+  (len) => {
+    if (activeIndex.value >= len) activeIndex.value = Math.max(0, len - 1)
+  },
+)
 </script>
 
 <template>
@@ -127,7 +143,7 @@ function onKeydown(event: KeyboardEvent): void {
         <div class="search-hint">
           ↑ ↓ 选择 · Enter 打开 · Esc 关闭<template v-if="loadingLibrary"> · 正在加载书架与音乐…</template>
         </div>
-        <div class="search-results">
+        <div ref="resultsEl" class="search-results">
           <button
             v-for="(item, index) in shown"
             :key="item.key"
@@ -151,6 +167,13 @@ function onKeydown(event: KeyboardEvent): void {
 </template>
 
 <style scoped>
+.search-results {
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  margin: 4px -10px 0;
+  padding: 0 10px;
+}
+
 .search-item {
   display: flex;
   align-items: center;

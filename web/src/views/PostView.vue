@@ -43,6 +43,8 @@ const related = computed(() => moderation.visible(relatedPosts(slug.value)))
 const activeHeading = ref('')
 const proseEl = ref<HTMLElement | null>(null)
 const restoredAt = ref(0)
+/** 移动端目录抽屉的开关，桌面端用侧栏，不受影响 */
+const tocOpen = ref(false)
 
 const fontStyle = computed(() => ({
   '--font-scale': settings.fontScale === 'sm' ? '0.92' : settings.fontScale === 'lg' ? '1.12' : '1',
@@ -57,6 +59,8 @@ function backToTop(): void {
 function scrollToHeading(id: string): void {
   const target = document.getElementById(id)
   if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // 移动端是抽屉式目录，跳完关掉
+  tocOpen.value = false
 }
 
 /* 进度写盘的两个开关，放最前面避免 TDZ：
@@ -269,6 +273,9 @@ watch(
           <h1>{{ post.title }}</h1>
           <p class="muted">{{ post.excerpt }}</p>
           <div class="post-tools">
+            <button type="button" class="tool-btn toc-toggle" :class="{ on: tocOpen }" @click="tocOpen = !tocOpen">
+              目录
+            </button>
             <button type="button" class="tool-btn" @click="settings.cycleFontScale()">
               字号 {{ settings.fontScale === 'sm' ? '小' : settings.fontScale === 'lg' ? '大' : '中' }}
             </button>
@@ -328,6 +335,25 @@ watch(
           {{ heading.text }}
         </a>
       </aside>
+
+      <!-- 移动端目录抽屉：小屏侧栏隐藏，改用此覆盖层 -->
+      <Teleport to="body">
+        <div v-if="tocOpen && post.headings.length" class="toc-drawer" role="dialog" aria-label="目录">
+          <div class="toc-drawer__head">
+            <span>目录</span>
+            <button type="button" class="toc-drawer__x" aria-label="关闭目录" @click="tocOpen = false">×</button>
+          </div>
+          <a
+            v-for="heading in post.headings"
+            :key="heading.id"
+            :href="`#${heading.id}`"
+            :class="['depth-' + heading.level, { on: activeHeading === heading.id }]"
+            @click.prevent="scrollToHeading(heading.id)"
+          >
+            {{ heading.text }}
+          </a>
+        </div>
+      </Teleport>
     </div>
   </div>
 

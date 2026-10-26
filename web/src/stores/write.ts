@@ -22,6 +22,29 @@ export const useWriteStore = defineStore('write', () => {
 
   const words = computed(() => (current.value ? current.value.content.replace(/\s+/g, '').length : 0))
 
+  // 崩溃兜底：IndexedDB 是异步的，beforeunload 里未必写完，
+  // 所以每次编辑同步镜像一份到 localStorage，重开时拿它覆盖较旧的库内容。
+  const MIRROR = 'banyue:draft-mirror'
+  function mirrorNow(): void {
+    if (!current.value) return
+    try {
+      localStorage.setItem(MIRROR, JSON.stringify({ ...current.value, updatedAt: Date.now() }))
+    } catch {
+      /* 配额满等忽略，IndexedDB 仍是主存储 */
+    }
+  }
+  function takeMirror(): DraftRecord | null {
+    try {
+      const raw = localStorage.getItem(MIRROR)
+      if (!raw) return null
+      const data = JSON.parse(raw) as DraftRecord
+      localStorage.removeItem(MIRROR)
+      return data
+    } catch {
+      return null
+    }
+  }
+
   async function refresh(): Promise<void> {
     drafts.value = await listDrafts()
   }
@@ -30,8 +53,15 @@ export const useWriteStore = defineStore('write', () => {
     // 还压在 800ms 防抖里的改动先落盘，否则切到别的草稿就把它丢了
     if (timer) await saveNow()
     const draft = await getDraft(id)
-    current.value = draft ?? null
-    savedAt.value = draft?.updatedAt ?? null
+    // 镜像比库里新（关页/被杀时 IndexedDB 没写完），用镜像覆盖
+    const mirror = takeMirror()
+    if (mirror && mirror.id === id && (mirror.updatedAt ?? 0) > (draft?.updatedAt ?? 0)) {
+      await putDraft(mirror)
+      current.value = mirror
+    } else {
+      current.value = draft ?? null
+    }
+    savedAt.value = current.value?.updatedAt ?? null
     dirty.value = false
     editRevision = 0
   }
@@ -52,6 +82,7 @@ export const useWriteStore = defineStore('write', () => {
     Object.assign(current.value, patch, { updatedAt: Date.now() })
     editRevision += 1
     dirty.value = true
+    mirrorNow()
     scheduleSave()
   }
 
@@ -84,6 +115,12 @@ export const useWriteStore = defineStore('write', () => {
         savedAt.value = snapshot.updatedAt
         dirty.value = false
       }
+      // 已安全落库，清掉崩溃兜底镜像，避免下次进来误用旧内容
+      try {
+        localStorage.removeItem(MIRROR)
+      } catch {
+        /* ignore */
+      }
       await refresh()
     } finally {
       saving.value = false
@@ -93,6 +130,12 @@ export const useWriteStore = defineStore('write', () => {
   async function remove(id: string): Promise<void> {
     await deleteDraft(id)
     if (current.value?.id === id) current.value = null
+    // 删的是正在编辑的草稿时，镜像也属于它，一并清掉
+    try {
+      localStorage.removeItem(MIRROR)
+    } catch {
+      /* ignore */
+    }
     await refresh()
   }
 

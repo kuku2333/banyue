@@ -31,6 +31,7 @@ function seed(id: string, content: string): DraftRecord {
 describe('写作台自动保存', () => {
   beforeEach(() => {
     drafts.clear()
+    localStorage.clear()
     setActivePinia(createPinia())
   })
 
@@ -65,5 +66,35 @@ describe('写作台自动保存', () => {
     expect(drafts.get('c')?.content).toBe('第一版')
     expect(store.current?.content).toBe('第一版 + 第二版')
     expect(store.dirty).toBe(true)
+  })
+
+  it('崩溃兜底：镜像比库新时 open 用镜像覆盖', async () => {
+    seed('d', '库里的旧版')
+    const store = useWriteStore()
+    await store.open('d')
+
+    // 编辑后只写了镜像（模拟关页时 IndexedDB 没落盘）
+    store.update({ content: '最后敲的字，还没防抖落库' })
+    expect(drafts.get('d')?.content).toBe('库里的旧版')
+
+    // 重新打开这份草稿，应拿镜像覆盖旧库内容
+    await store.open('d')
+    expect(store.current?.content).toBe('最后敲的字，还没防抖落库')
+    expect(drafts.get('d')?.content).toBe('最后敲的字，还没防抖落库')
+
+    // 镜像已被消费掉，不会重复恢复
+    await store.open('d')
+    expect(store.current?.content).toBe('最后敲的字，还没防抖落库')
+    expect(localStorage.getItem('banyue:draft-mirror')).toBeNull()
+  })
+
+  it('干净落库后会清掉镜像', async () => {
+    seed('e', '内容')
+    const store = useWriteStore()
+    await store.open('e')
+    store.update({ content: '改一下' })
+    await store.saveNow()
+    expect(localStorage.getItem('banyue:draft-mirror')).toBeNull()
+    expect(drafts.get('e')?.content).toBe('改一下')
   })
 })

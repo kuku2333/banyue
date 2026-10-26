@@ -150,11 +150,19 @@ let longPressTimer: number | undefined
 let longPressMoved = false
 let longPressFired = false
 
+/* 滑动翻页：记录起点，touchend 时判断是否横向滑动（仅翻页模式） */
+let swipeX = 0
+let swipeY = 0
+let swipeStartT = 0
+
 function onHitTouchStart(event: TouchEvent): void {
   longPressMoved = false
   const touch = event.touches[0]
   if (!touch) return
   const { clientX, clientY } = touch
+  swipeX = clientX
+  swipeY = clientY
+  swipeStartT = Date.now()
   longPressTimer = window.setTimeout(() => {
     if (longPressMoved) return
     const target = findParagraphAt(clientX, clientY)
@@ -170,10 +178,24 @@ function onHitTouchMove(): void {
     longPressTimer = undefined
   }
 }
-function onHitTouchEnd(): void {
+function onHitTouchEnd(event: TouchEvent): void {
   if (longPressTimer) {
     clearTimeout(longPressTimer)
     longPressTimer = undefined
+  }
+  if (longPressFired) {
+    longPressFired = false
+    return
+  }
+  // 翻页模式下，明显的横向滑动即翻页；纵向滑动留给滚动
+  if (settings.mode !== 'paged') return
+  const t = event.changedTouches[0]
+  if (!t) return
+  const dx = t.clientX - swipeX
+  const dy = t.clientY - swipeY
+  const dt = Date.now() - swipeStartT
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5 && dt < 800) {
+    void turn(dx < 0 ? 1 : -1)
   }
 }
 

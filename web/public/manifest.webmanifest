@@ -1,0 +1,19 @@
+{
+  "name": "半月",
+  "short_name": "半月",
+  "description": "雷半斩的生活随笔与读书笔记，关于城市、阅读与慢下来的日常。",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0e13",
+  "theme_color": "#0a0e13",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
