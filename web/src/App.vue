@@ -7,6 +7,7 @@ import MobileTabs from '@/components/MobileTabs.vue'
 import SearchOverlay from '@/components/SearchOverlay.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
 import AuthDialog from '@/components/AuthDialog.vue'
+import BackupDialog from '@/components/BackupDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useModerationStore } from '@/stores/moderation'
 import { useThemeStore } from '@/stores/theme'
@@ -16,6 +17,7 @@ const auth = useAuthStore()
 const moderation = useModerationStore()
 const theme = useThemeStore()
 const searchOpen = ref(false)
+const backupOpen = ref(false)
 const progress = ref(0)
 /** 系统主题监听器的清理函数 */
 let unwatchSystem: (() => void) | null = null
@@ -66,7 +68,7 @@ watch(
 <template>
   <div class="progress" :style="{ width: `${progress}%`, opacity: isPost ? 1 : 0 }" aria-hidden="true" />
 
-  <SiteHeader @open-search="searchOpen = true" />
+  <SiteHeader @open-search="searchOpen = true" @open-backup="backupOpen = true" />
 
   <main id="main" class="main">
     <RouterView v-slot="{ Component }">
@@ -81,6 +83,7 @@ watch(
   <PlayerBar />
   <AuthDialog v-model:open="auth.dialogOpen" />
   <SearchOverlay v-model:open="searchOpen" />
+  <BackupDialog v-model:open="backupOpen" />
 </template>
 
 <style scoped>

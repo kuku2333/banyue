@@ -5,7 +5,7 @@ import { onClickOutside } from '@vueuse/core'
 import { useAuthStore } from '@/stores/auth'
 import { THEME_MODES, useThemeStore } from '@/stores/theme'
 
-const emit = defineEmits<{ 'open-search': [] }>()
+const emit = defineEmits<{ 'open-search': []; 'open-backup': [] }>()
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
@@ -65,6 +65,12 @@ async function regenerate(): Promise<void> {
 function goCollections(): void {
   menuOpen.value = false
   void router.push('/collections')
+}
+
+/** 数据备份：对话框由 App 挂载，这里只负责发事件 */
+function openBackup(): void {
+  menuOpen.value = false
+  emit('open-backup')
 }
 </script>
 
@@ -134,6 +140,7 @@ function goCollections(): void {
             <span>@{{ auth.user?.username }}</span>
           </p>
           <button type="button" role="menuitem" @click="goCollections">我的收藏夹</button>
+          <button type="button" role="menuitem" @click="openBackup">数据备份</button>
           <button type="button" role="menuitem" @click="regenerate">重新生成恢复码</button>
           <button type="button" role="menuitem" class="danger" @click="signOut">退出登录</button>
           <p v-if="menuError" class="menu-error">{{ menuError }}</p>
