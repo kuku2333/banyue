@@ -14,14 +14,26 @@
           var raw = localStorage.getItem('banyue:theme')
           var mode = raw ? JSON.parse(raw) : 'dark'
           if (mode !== 'dark' && mode !== 'light' && mode !== 'auto') mode = 'dark'
+          var palettes = ['teal', 'paper', 'night', 'forest', 'sakura']
+          var rawPalette = localStorage.getItem('banyue:palette')
+          var palette = rawPalette ? JSON.parse(rawPalette) : 'teal'
+          if (palettes.indexOf(palette) === -1) palette = 'teal'
           var light =
             mode === 'light' ||
             (mode === 'auto' && window.matchMedia('(prefers-color-scheme: light)').matches)
-          document.documentElement.dataset.theme = light ? 'light' : 'dark'
+          var root = document.documentElement
+          root.dataset.theme = light ? 'light' : 'dark'
+          root.dataset.palette = palette
+          // 背景色要和 CSS 里的 --bg 一致，否则移动端地址栏会跳色
+          var BG = {
+            dark: { teal: '#0a0e13', paper: '#14110c', night: '#080b16', forest: '#08120d', sakura: '#120a10' },
+            light: { teal: '#f7f9fc', paper: '#faf6ee', night: '#f5f7fd', forest: '#f6faf6', sakura: '#fdf6f9' },
+          }
           var meta = document.querySelector('meta[name="theme-color"]')
-          if (meta) meta.setAttribute('content', light ? '#f6f8fb' : '#0a0e13')
+          if (meta) meta.setAttribute('content', BG[light ? 'light' : 'dark'][palette])
         } catch (e) {
           document.documentElement.dataset.theme = 'dark'
+          document.documentElement.dataset.palette = 'teal'
         }
       })()
     </script>

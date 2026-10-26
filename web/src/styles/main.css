@@ -3,6 +3,13 @@
    暗色底 + 青绿主色，衬线正文，卡片化列表。
    ========================================================================== */
 
+/* ==========================================================================
+   主题结构：两个维度独立
+   - data-theme="dark|light"   决定背景明度与文字明度
+   - data-palette="teal|paper|night|forest|sakura"  决定主色与背景色相
+   先给暗色各配色的完整变量，再由 [data-theme='light'] 覆盖明度相关的键。
+   ========================================================================== */
+
 :root {
   --bg: #0a0e13;
   --bg-soft: #0e141b;
@@ -13,12 +20,17 @@
   --text: #e9eff6;
   --text-2: #b9c6d4;
   --muted: #8b9aab;
-  --dim: #65748a;
+  --dim: #7b8a9e;
   --accent: #5eead4;
   --accent-2: #7dd3fc;
+  --on-accent: #06211d;
   --accent-soft: rgba(94, 234, 212, 0.1);
   --accent-line: rgba(94, 234, 212, 0.32);
   --danger: #fb7185;
+  /* 背景光晕的两种色，各配色自己定 */
+  --glow-1: rgba(94, 234, 212, 0.22);
+  --glow-2: rgba(125, 211, 252, 0.2);
+  --glow-3: rgba(129, 140, 248, 0.18);
 
   --serif:
     'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'SimSun', 'STSong', Georgia,
@@ -39,28 +51,219 @@
   --tint-grid: rgba(255, 255, 255, 0.022);
 }
 
-/* 亮色主题：只覆盖颜色变量，其余（字体、圆角、间距）复用 */
+/* ========== 暗色下的各配色（只覆盖主色与光晕） ========== */
+
+/* 暖纸暗色：褐调，像旧书页 */
+:root[data-palette='paper'][data-theme='dark'] {
+  --bg: #14110c;
+  --bg-soft: #1a1611;
+  --card: #1f1a13;
+  --card-2: #262017;
+  --text: #f0e9dc;
+  --text-2: #cfc3ad;
+  --muted: #a2957d;
+  --dim: #9a8d76;
+  --accent: #e0b552;
+  --accent-2: #d99a4e;
+  --on-accent: #1c1408;
+  --accent-soft: rgba(224, 181, 82, 0.12);
+  --accent-line: rgba(224, 181, 82, 0.34);
+  --glow-1: rgba(224, 181, 82, 0.16);
+  --glow-2: rgba(217, 154, 78, 0.14);
+  --glow-3: rgba(160, 120, 70, 0.12);
+}
+
+/* 夜空暗色：靛蓝 */
+:root[data-palette='night'][data-theme='dark'] {
+  --bg: #080b16;
+  --bg-soft: #0d1120;
+  --card: #121729;
+  --card-2: #171d33;
+  --text: #e6e9f7;
+  --text-2: #b6bde0;
+  --muted: #8b93bd;
+  --dim: #858cb0;
+  --accent: #a5b4fc;
+  --accent-2: #93c5fd;
+  --on-accent: #10132b;
+  --accent-soft: rgba(165, 180, 252, 0.12);
+  --accent-line: rgba(165, 180, 252, 0.34);
+  --glow-1: rgba(129, 140, 248, 0.24);
+  --glow-2: rgba(99, 102, 241, 0.18);
+  --glow-3: rgba(56, 189, 248, 0.14);
+}
+
+/* 森绿暗色 */
+:root[data-palette='forest'][data-theme='dark'] {
+  --bg: #08120d;
+  --bg-soft: #0c1913;
+  --card: #101f18;
+  --card-2: #15281e;
+  --text: #e4f2e9;
+  --text-2: #b3cdbc;
+  --muted: #87a894;
+  --dim: #7d9a8a;
+  --accent: #6ee7a0;
+  --accent-2: #4ade80;
+  --on-accent: #06180d;
+  --accent-soft: rgba(110, 231, 160, 0.12);
+  --accent-line: rgba(110, 231, 160, 0.32);
+  --glow-1: rgba(74, 222, 128, 0.2);
+  --glow-2: rgba(34, 197, 94, 0.16);
+  --glow-3: rgba(20, 184, 166, 0.12);
+}
+
+/* 樱粉暗色 */
+:root[data-palette='sakura'][data-theme='dark'] {
+  --bg: #120a10;
+  --bg-soft: #190f16;
+  --card: #21141d;
+  --card-2: #2a1a25;
+  --text: #f7e8f1;
+  --text-2: #d8bcca;
+  --muted: #b091a1;
+  --dim: #a28494;
+  --accent: #f9a8d4;
+  --accent-2: #f472b6;
+  --on-accent: #2a0a18;
+  --accent-soft: rgba(249, 168, 212, 0.12);
+  --accent-line: rgba(249, 168, 212, 0.32);
+  --glow-1: rgba(244, 114, 182, 0.18);
+  --glow-2: rgba(232, 121, 249, 0.14);
+  --glow-3: rgba(192, 132, 252, 0.12);
+}
+
+/* ========== 亮色：先定明度底子，再按配色挑主色 ========== */
 :root[data-theme='light'] {
-  --bg: #f6f8fb;
+  --bg: #f7f9fc;
   --bg-soft: #eef2f7;
   --card: #ffffff;
-  --card-2: #f4f7fa;
-  --line: rgba(15, 30, 50, 0.09);
-  --line-strong: rgba(15, 30, 50, 0.18);
-  --text: #16202b;
-  --text-2: #3d4d5e;
-  --muted: #5d6f83;
-  --dim: #8496a8;
-  /* 亮底上青绿太浅，换成更深的同色系保证对比度 */
-  --accent: #0d9488;
-  --accent-2: #0284c7;
-  --accent-soft: rgba(13, 148, 136, 0.1);
-  --accent-line: rgba(13, 148, 136, 0.32);
-  --danger: #e11d48;
+  --card-2: #f2f6fa;
+  --line: rgba(15, 30, 50, 0.1);
+  --line-strong: rgba(15, 30, 50, 0.2);
+  --text: #101923;
+  --text-2: #33445a;
+  --muted: #51637a;
+  /* 原来的 #8496a8 只有 2.86:1，页脚日期这类小字根本看不清 */
+  --dim: #5f7288;
+  /* 亮底上青绿要用深一档：#0d9488 在浅背景只有 3.52:1，压到 4.5 以上 */
+  --accent: #0f766e;
+  --accent-2: #0369a1;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(15, 118, 110, 0.1);
+  --accent-line: rgba(15, 118, 110, 0.3);
+  --danger: #be123c;
   --shadow: 0 14px 34px rgba(15, 30, 50, 0.1);
   --tint: rgba(15, 30, 50, 0.055);
   --tint-soft: rgba(15, 30, 50, 0.045);
   --tint-grid: rgba(15, 30, 50, 0.03);
+  --glow-1: rgba(15, 118, 110, 0.07);
+  --glow-2: rgba(3, 105, 161, 0.06);
+  --glow-3: rgba(99, 102, 241, 0.05);
+}
+
+/* 暖纸亮色：米黄纸感，正文用深褐而不是纯黑 */
+:root[data-palette='paper'][data-theme='light'] {
+  --bg: #faf6ee;
+  --bg-soft: #f4ede0;
+  --card: #fffdf8;
+  --card-2: #f7f1e6;
+  --line: rgba(70, 52, 30, 0.12);
+  --line-strong: rgba(70, 52, 30, 0.22);
+  --text: #2a2118;
+  --text-2: #4d3f2e;
+  --muted: #6b5b45;
+  --dim: #7d6d55;
+  --accent: #8a6a12;
+  --accent-2: #a05c1e;
+  --on-accent: #fffdf6;
+  --accent-soft: rgba(138, 106, 18, 0.1);
+  --accent-line: rgba(138, 106, 18, 0.3);
+  --danger: #a51f3a;
+  --tint: rgba(70, 52, 30, 0.06);
+  --tint-soft: rgba(70, 52, 30, 0.05);
+  --tint-grid: rgba(70, 52, 30, 0.035);
+  --glow-1: rgba(201, 162, 39, 0.1);
+  --glow-2: rgba(160, 92, 30, 0.07);
+  --glow-3: rgba(138, 106, 18, 0.05);
+}
+
+/* 夜空亮色：冷白偏蓝 */
+:root[data-palette='night'][data-theme='light'] {
+  --bg: #f5f7fd;
+  --bg-soft: #eceffa;
+  --card: #ffffff;
+  --card-2: #f0f3fb;
+  --line: rgba(28, 32, 70, 0.11);
+  --line-strong: rgba(28, 32, 70, 0.21);
+  --text: #141a33;
+  --text-2: #333a5c;
+  --muted: #4f577c;
+  --dim: #5d6588;
+  --accent: #4f46e5;
+  --accent-2: #2563eb;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(79, 70, 229, 0.09);
+  --accent-line: rgba(79, 70, 229, 0.28);
+  --danger: #be123c;
+  --tint: rgba(28, 32, 70, 0.055);
+  --tint-soft: rgba(28, 32, 70, 0.045);
+  --tint-grid: rgba(28, 32, 70, 0.03);
+  --glow-1: rgba(79, 70, 229, 0.08);
+  --glow-2: rgba(37, 99, 235, 0.06);
+  --glow-3: rgba(56, 189, 248, 0.05);
+}
+
+/* 森绿亮色 */
+:root[data-palette='forest'][data-theme='light'] {
+  --bg: #f6faf6;
+  --bg-soft: #ecf5ee;
+  --card: #ffffff;
+  --card-2: #f1f8f3;
+  --line: rgba(20, 55, 35, 0.11);
+  --line-strong: rgba(20, 55, 35, 0.21);
+  --text: #0f2318;
+  --text-2: #2c4a37;
+  --muted: #456b52;
+  --dim: #54785f;
+  --accent: #15803d;
+  --accent-2: #0f766e;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(21, 128, 61, 0.09);
+  --accent-line: rgba(21, 128, 61, 0.28);
+  --danger: #be123c;
+  --tint: rgba(20, 55, 35, 0.055);
+  --tint-soft: rgba(20, 55, 35, 0.045);
+  --tint-grid: rgba(20, 55, 35, 0.03);
+  --glow-1: rgba(21, 128, 61, 0.08);
+  --glow-2: rgba(15, 118, 110, 0.06);
+  --glow-3: rgba(74, 222, 128, 0.05);
+}
+
+/* 樱粉亮色 */
+:root[data-palette='sakura'][data-theme='light'] {
+  --bg: #fdf6f9;
+  --bg-soft: #fbeef4;
+  --card: #ffffff;
+  --card-2: #fdf2f7;
+  --line: rgba(70, 30, 50, 0.1);
+  --line-strong: rgba(70, 30, 50, 0.2);
+  --text: #2b1620;
+  --text-2: #57323f;
+  --muted: #77505f;
+  --dim: #8a6473;
+  --accent: #be185d;
+  --accent-2: #a21caf;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(190, 24, 93, 0.09);
+  --accent-line: rgba(190, 24, 93, 0.28);
+  --danger: #9f1239;
+  --tint: rgba(70, 30, 50, 0.055);
+  --tint-soft: rgba(70, 30, 50, 0.045);
+  --tint-grid: rgba(70, 30, 50, 0.03);
+  --glow-1: rgba(190, 24, 93, 0.07);
+  --glow-2: rgba(162, 28, 175, 0.06);
+  --glow-3: rgba(244, 114, 182, 0.05);
 }
 
 * {
@@ -101,22 +304,15 @@ body::before {
   /* 稍微超出视口，给缓慢漂移留出余量，避免边缘露白 */
   inset: -18%;
   background:
-    radial-gradient(820px 520px at 14% 8%, rgba(94, 234, 212, 0.22), transparent 62%),
-    radial-gradient(760px 520px at 86% 12%, rgba(125, 211, 252, 0.2), transparent 60%),
-    radial-gradient(980px 760px at 50% 108%, rgba(129, 140, 248, 0.18), transparent 66%),
-    radial-gradient(600px 420px at 74% 62%, rgba(56, 189, 248, 0.09), transparent 68%);
+    radial-gradient(820px 520px at 14% 8%, var(--glow-1), transparent 62%),
+    radial-gradient(760px 520px at 86% 12%, var(--glow-2), transparent 60%),
+    radial-gradient(980px 760px at 50% 108%, var(--glow-3), transparent 66%),
+    radial-gradient(600px 420px at 74% 62%, var(--glow-2), transparent 68%);
   animation: aurora-drift 34s ease-in-out infinite alternate;
   will-change: transform, filter;
 }
 
-/* 亮色下光晕要压得很淡，否则整页发绿、正文看不清 */
-:root[data-theme='light'] body::before {
-  background:
-    radial-gradient(820px 520px at 14% 8%, rgba(13, 148, 136, 0.07), transparent 62%),
-    radial-gradient(760px 520px at 86% 12%, rgba(2, 132, 199, 0.06), transparent 60%),
-    radial-gradient(980px 760px at 50% 108%, rgba(99, 102, 241, 0.05), transparent 66%);
-}
-
+/* 亮色下第二层纹理压淡，避免整页发花 */
 :root[data-theme='light'] body::after {
   opacity: 0.5;
 }
@@ -302,7 +498,7 @@ svg {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: linear-gradient(140deg, rgba(94, 234, 212, 0.22), rgba(125, 211, 252, 0.1));
+  background: linear-gradient(140deg, var(--accent-soft), transparent);
   border: 1px solid var(--accent-line);
   color: var(--accent);
   font-family: var(--serif);
@@ -367,6 +563,103 @@ svg {
   line-height: 1;
 }
 
+/* ---------- 主题面板 ---------- */
+
+.theme-wrap {
+  position: relative;
+}
+
+.theme-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 60;
+  width: 236px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.panel-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+.panel-title + .palette-grid,
+.mode-row {
+  margin-bottom: 12px;
+}
+
+.mode-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 2px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.mode-btn:hover,
+.palette-btn:hover {
+  border-color: var(--accent-line);
+  color: var(--text);
+}
+
+.mode-btn.on {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+}
+
+.palette-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 0.74rem;
+}
+
+.palette-btn i {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.35) inset;
+}
+
+.palette-btn b {
+  font-weight: 500;
+}
+
+.palette-btn.on {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
 /* ---------- 首页 ---------- */
 
 .hero {
@@ -421,16 +714,18 @@ svg {
   color: var(--accent);
 }
 
+/* 实心按钮：底色跟随配色主色，文字用 --on-accent。
+   原来硬编码亮青绿渐变 + 深绿字，亮色主题下底色本就近白，字会糊成一团。 */
 .btn--solid {
-  background: linear-gradient(120deg, rgba(94, 234, 212, 0.9), rgba(125, 211, 252, 0.85));
-  color: #06211d;
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  color: var(--on-accent, #06211d);
   border-color: transparent;
   font-weight: 600;
 }
 
 .btn--solid:hover {
-  color: #06211d;
-  filter: brightness(1.05);
+  color: var(--on-accent, #06211d);
+  filter: brightness(1.06);
 }
 
 .stats {

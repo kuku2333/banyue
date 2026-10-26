@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { onClickOutside } from '@vueuse/core'
 import { useAuthStore } from '@/stores/auth'
-import { THEME_MODES, useThemeStore } from '@/stores/theme'
+import { PALETTES, THEME_MODES, useThemeStore } from '@/stores/theme'
 
 const emit = defineEmits<{ 'open-search': []; 'open-backup': [] }>()
 const route = useRoute()
@@ -11,8 +11,17 @@ const router = useRouter()
 const auth = useAuthStore()
 const theme = useThemeStore()
 
+const themeOpen = ref(false)
+const themeRef = ref<HTMLElement | null>(null)
+onClickOutside(themeRef, () => {
+  themeOpen.value = false
+})
+
 const themeInfo = computed(
   () => THEME_MODES.find((item) => item.id === theme.mode) ?? THEME_MODES[0]!,
+)
+const paletteInfo = computed(
+  () => PALETTES.find((item) => item.id === theme.palette) ?? PALETTES[0]!,
 )
 
 const menuOpen = ref(false)
@@ -108,15 +117,51 @@ function openBackup(): void {
           <path d="M20 20l-3.5-3.5" />
         </svg>
       </button>
-      <button
-        class="icon-btn theme-btn"
-        type="button"
-        :aria-label="`主题：${themeInfo.label}（点击切换）`"
-        :title="`主题：${themeInfo.label}`"
-        @click="theme.cycle()"
-      >
-        <span aria-hidden="true">{{ themeInfo.icon }}</span>
-      </button>
+      <div ref="themeRef" class="theme-wrap">
+        <button
+          class="icon-btn theme-btn"
+          type="button"
+          :aria-label="`主题：${themeInfo.label} · ${paletteInfo.label}`"
+          :title="`主题：${themeInfo.label} · ${paletteInfo.label}`"
+          :aria-expanded="themeOpen"
+          aria-haspopup="dialog"
+          @click="themeOpen = !themeOpen"
+        >
+          <span aria-hidden="true">{{ themeInfo.icon }}</span>
+        </button>
+
+        <div v-if="themeOpen" class="theme-panel" role="dialog" aria-label="外观设置">
+          <p class="panel-title">明暗</p>
+          <div class="mode-row">
+            <button
+              v-for="item in THEME_MODES"
+              :key="item.id"
+              type="button"
+              class="mode-btn"
+              :class="{ on: theme.mode === item.id }"
+              @click="theme.set(item.id)"
+            >
+              <span aria-hidden="true">{{ item.icon }}</span>{{ item.label }}
+            </button>
+          </div>
+
+          <p class="panel-title">配色</p>
+          <div class="palette-grid">
+            <button
+              v-for="item in PALETTES"
+              :key="item.id"
+              type="button"
+              class="palette-btn"
+              :class="{ on: theme.palette === item.id }"
+              :title="item.hint"
+              @click="theme.setPalette(item.id)"
+            >
+              <i :style="{ background: item.swatch }" aria-hidden="true" />
+              <b>{{ item.label }}</b>
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div ref="accountRef" class="account">
         <button
