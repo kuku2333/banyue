@@ -596,6 +596,18 @@ onMounted(() => {
     { deep: true },
   )
 })
+
+/**
+ * 导出当前画布为 PNG。
+ * 重绘一遍再取数据，而不是直接 toDataURL：canvas 上可能有临时预览线段，
+ * 导出时不该带上它们。devicePixelRatio 缩放已经体现在画布尺寸里，直接取即可。
+ */
+function exportPng(): string {
+  draw()
+  return canvasRef.value?.toDataURL('image/png') ?? ''
+}
+
+defineExpose({ exportPng })
 </script>
 
 <template>

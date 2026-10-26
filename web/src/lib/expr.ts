@@ -70,14 +70,14 @@ export function nearestPoint(
 
 /* ---------------- 解析器 ---------------- */
 
-type Node =
+export type Node =
   | { kind: 'num'; value: number }
   | { kind: 'var'; name: string }
   | { kind: 'unary'; op: string; operand: Node }
   | { kind: 'binary'; op: string; left: Node; right: Node }
   | { kind: 'call'; name: string; args: Node[] }
 
-const CONSTANTS: Record<string, number> = {
+export const CONSTANTS: Record<string, number> = {
   pi: Math.PI,
   e: Math.E,
   tau: Math.PI * 2,
@@ -85,7 +85,7 @@ const CONSTANTS: Record<string, number> = {
 }
 
 /** 单参数函数 */
-const FUNC1: Record<string, MathFunction> = {
+export const FUNC1: Record<string, MathFunction> = {
   sin: Math.sin,
   cos: Math.cos,
   tan: Math.tan,
@@ -286,7 +286,7 @@ class Parser {
   }
 }
 
-function parse(src: string): Node {
+export function parse(src: string): Node {
   const tokens = tokenize(src)
   if (!tokens.length) throw new ParseError('表达式为空')
   return new Parser(tokens).parse()

@@ -17,6 +17,7 @@ import {
   type MathPage,
 } from '@/lib/db'
 import { compileExpr } from '@/lib/expr'
+import { differentiate } from '@/lib/symbolic'
 
 /** 数学工具：平面坐标系 + 草稿纸，可自由写画、作图、分页、保存。 */
 
@@ -201,12 +202,53 @@ function removeFunction(index: number): void {
   const page = currentPage.value
   if (!page) return
   page.functions.splice(index, 1)
+  if (showDerivative.value === index) showDerivative.value = -1
 }
 
 function toggleFunction(index: number): void {
   const page = currentPage.value
   if (!page) return
   page.functions[index]!.visible = !page.functions[index]!.visible
+}
+
+/* ---------- 符号求导展示 ---------- */
+
+/** 当前展开导数的函数下标，-1 表示没展开 */
+const showDerivative = ref(-1)
+
+const derivativeResult = computed(() => {
+  const index = showDerivative.value
+  const fn = index >= 0 ? currentPage.value?.functions[index] : undefined
+  if (!fn) return null
+  return { expr: fn.expr, ...differentiate(fn.expr) }
+})
+
+const derivativeText = computed(() => {
+  const result = derivativeResult.value
+  if (!result) return ''
+  return result.error ? `f′(x) = 无法求导` : `f′(x) = ${result.text}`
+})
+
+const derivativeError = computed(() => derivativeResult.value?.error ?? '')
+
+function toggleDerivative(index: number): void {
+  showDerivative.value = showDerivative.value === index ? -1 : index
+}
+
+/* ---------- 导出坐标系为 PNG ---------- */
+
+const graphRef = ref<{ exportPng: () => string } | null>(null)
+
+function exportGraph(): void {
+  const dataUrl = graphRef.value?.exportPng() ?? ''
+  if (!dataUrl) return
+  const link = document.createElement('a')
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
+  link.href = dataUrl
+  link.download = `banyue-graph-${stamp}.png`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
 }
 
 function removeGeometry(id: string): void {
@@ -400,13 +442,31 @@ watch(
       <input v-model="exprColor" type="color" class="expr-color" title="曲线颜色" />
       <button type="button" class="btn small-btn" @click="addFunction">画曲线</button>
       <div v-if="currentPage?.functions.length" class="func-list">
-        <span v-for="(f, i) in currentPage.functions" :key="i" class="func-chip" :class="{ off: !f.visible }">
+        <span
+          v-for="(f, i) in currentPage.functions"
+          :key="i"
+          class="func-chip"
+          :class="{ off: !f.visible, derived: showDerivative === i }"
+        >
           <i :style="{ background: f.color }" />
           <code>{{ f.expr }}</code>
+          <button
+            type="button"
+            class="x"
+            :title="showDerivative === i ? '收起导数' : '显示 f′(x)'"
+            @click="toggleDerivative(i)"
+          >
+            ′
+          </button>
           <button type="button" class="x" title="隐藏/显示" @click="toggleFunction(i)">{{ f.visible ? '👁' : '—' }}</button>
           <button type="button" class="x" title="删除" @click="removeFunction(i)">×</button>
         </span>
       </div>
+      <!-- 导数结果条：只在展开时出现，不挤占常驻空间 -->
+      <p v-if="derivativeText" class="derivative-line">
+        <code>{{ derivativeText }}</code>
+        <span v-if="derivativeError" class="muted small">（{{ derivativeError }}）</span>
+      </p>
     </div>
 
     <!-- 工作区 -->
@@ -428,6 +488,7 @@ watch(
       <div class="pane graph-pane">
         <div class="pane-title">坐标系 <span class="muted small">滚轮缩放 · 拖拽平移</span></div>
         <GraphCanvas
+          ref="graphRef"
           v-if="currentPage"
           :functions="currentPage.functions"
           :geometry="currentPage.geometry"
@@ -439,8 +500,11 @@ watch(
           @add-geometry="onAddGeometry"
           @select="onSelectGeometry"
         />
-        <div v-if="currentPage?.geometry.length" class="geo-list">
-          <span class="muted small">几何元素 {{ currentPage.geometry.length }} 个</span>
+        <div class="geo-list">
+          <span class="muted small" v-if="currentPage?.geometry.length">几何元素 {{ currentPage.geometry.length }} 个</span>
+          <button type="button" class="btn small-btn" title="把当前坐标系存成图片" @click="exportGraph">
+            导出 PNG
+          </button>
         </div>
       </div>
     </div>
@@ -614,6 +678,23 @@ watch(
 .func-chip code {
   font-family: var(--mono);
   font-size: 0.78rem;
+}
+/* 展开导数时高亮当前这一条 */
+.func-chip.derived {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.derivative-line {
+  margin: 8px 0 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--accent-line);
+  background: var(--card-2);
+  font-size: 0.82rem;
+}
+.derivative-line code {
+  font-family: var(--mono);
+  color: var(--accent);
 }
 .func-chip .x {
   color: var(--dim);
