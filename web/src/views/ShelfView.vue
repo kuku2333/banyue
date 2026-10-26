@@ -267,6 +267,71 @@ function onCardClick(event: MouseEvent, id: string): void {
 
 const totalWords = computed(() => shelf.books.reduce((sum, book) => sum + book.words, 0))
 const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0) >= 0.999).length)
+
+/* ---------- 排序与筛选 ---------- */
+
+type SortKey = 'recent' | 'progress' | 'title' | 'added'
+type FilterKey = 'all' | 'reading' | 'done' | 'todo'
+
+const SORTS: { id: SortKey; label: string }[] = [
+  { id: 'recent', label: '最近在读' },
+  { id: 'progress', label: '进度' },
+  { id: 'title', label: '书名' },
+  { id: 'added', label: '加入时间' },
+]
+
+const FILTERS: { id: FilterKey; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'reading', label: '在读' },
+  { id: 'done', label: '读完' },
+  { id: 'todo', label: '未开始' },
+]
+
+const sortBy = ref<SortKey>('recent')
+const filterBy = ref<FilterKey>('all')
+
+/** 各状态的数量，用于筛选按钮上的角标 */
+const counts = computed(() => {
+  const books = shelf.books
+  return {
+    all: books.length,
+    reading: books.filter((b) => {
+      const p = b.progress ?? 0
+      return p > 0 && p < 0.999
+    }).length,
+    done: books.filter((b) => (b.progress ?? 0) >= 0.999).length,
+    todo: books.filter((b) => (b.progress ?? 0) <= 0).length,
+  }
+})
+
+const visibleBooks = computed(() => {
+  const books = shelf.books.filter((book) => {
+    const progress = book.progress ?? 0
+    if (filterBy.value === 'reading') return progress > 0 && progress < 0.999
+    if (filterBy.value === 'done') return progress >= 0.999
+    if (filterBy.value === 'todo') return progress <= 0
+    return true
+  })
+  const sorted = [...books]
+  sorted.sort((a, b) => {
+    if (sortBy.value === 'recent') {
+      // 没读过的排在后面，按加入时间兜底
+      return (b.lastReadAt ?? 0) - (a.lastReadAt ?? 0) || b.createdAt - a.createdAt
+    }
+    if (sortBy.value === 'progress') return (b.progress ?? 0) - (a.progress ?? 0)
+    if (sortBy.value === 'title')
+      return a.title.localeCompare(b.title, 'zh', { numeric: true, sensitivity: 'base' })
+    return b.createdAt - a.createdAt
+  })
+  return sorted
+})
+
+/** 整体阅读进度：只统计已经开始读的书，未开始的不拉低平均值 */
+const overallProgress = computed(() => {
+  const started = shelf.books.filter((book) => (book.progress ?? 0) > 0)
+  if (!started.length) return 0
+  return started.reduce((sum, book) => sum + (book.progress ?? 0), 0) / started.length
+})
 </script>
 
 <template>
@@ -282,6 +347,13 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
       </p>
     </div>
 
+    <!-- 整体进度条：只统计已开始读的书，未开始的不拉低平均值 -->
+    <div v-if="shelf.books.length && overallProgress > 0" class="shelf-progress">
+      <div class="shelf-progress__bar" aria-hidden="true">
+        <i :style="{ width: `${Math.round(overallProgress * 100)}%` }" />
+      </div>
+      <span class="muted small">书架整体已读 {{ Math.round(overallProgress * 100) }}%</span>
+    </div>
 
     <p v-if="message" class="notice">{{ message }}</p>
 
@@ -292,9 +364,34 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
       <p class="muted small">导入一本 TXT，阅读位置、主题、字号都会记住。</p>
     </div>
 
-    <div v-else class="book-grid">
+    <div v-else>
+      <!-- 筛选 + 排序 -->
+      <div class="shelf-toolbar">
+        <div class="chips" role="tablist" aria-label="按状态筛选">
+          <button
+            v-for="item in FILTERS"
+            :key="item.id"
+            type="button"
+            class="chip"
+            :class="{ on: filterBy === item.id }"
+            role="tab"
+            :aria-selected="filterBy === item.id"
+            @click="filterBy = item.id"
+          >
+            {{ item.label }}<small v-if="counts[item.id]">{{ counts[item.id] }}</small>
+          </button>
+        </div>
+        <label class="sort-select">
+          <span class="muted small">排序</span>
+          <select v-model="sortBy" aria-label="排序方式">
+            <option v-for="item in SORTS" :key="item.id" :value="item.id">{{ item.label }}</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="book-grid">
       <article
-        v-for="book in shelf.books"
+        v-for="book in visibleBooks"
         :key="book.id"
         class="book-card"
         :class="{ selected: selectMode === 'shelf' && isSelected(book.id) }"
@@ -338,6 +435,7 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
           </button>
         </template>
       </article>
+      </div>
     </div>
 
     <div
@@ -614,6 +712,74 @@ const finished = computed(() => shelf.books.filter((book) => (book.progress ?? 0
   display: block;
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+/* 书架整体进度 */
+.shelf-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 4px;
+}
+
+.shelf-progress__bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 6px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.shelf-progress__bar i {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.3s ease;
+}
+
+/* 筛选 + 排序工具栏 */
+.shelf-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 18px 0 14px;
+}
+
+.sort-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sort-select select {
+  appearance: none;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 28px 6px 10px;
+  font: inherit;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 52%, calc(100% - 9px) 52%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.sort-select select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (max-width: 600px) {
+  .shelf-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .book-del {
