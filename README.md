@@ -67,6 +67,26 @@ featured: false
 
 保存后 `pnpm dev` 会热更新；构建时自动生成列表、标签、归档与搜索索引。
 
+## SEO 与订阅
+
+`pnpm build` 会额外产出这些文件（不需要手写）：
+
+| 文件 | 用途 |
+|---|---|
+| `dist/rss.xml` | RSS 2.0 订阅源，含分类标签 |
+| `dist/sitemap.xml` | 站点地图，含全部文章与静态路由 |
+| `dist/robots.txt` | 爬虫规则（屏蔽 `/write`、`/collections`） |
+| `dist/post/<slug>/index.html` | 每篇文章的静态页，带 og / twitter / JSON-LD |
+
+**部署时必须设置真实域名**，否则生成的链接会指向占位地址：
+
+```bash
+SITE_URL="https://your-domain.com" pnpm build
+```
+
+不设置时回退到 `https://banyue.example.com`。这个值决定 canonical、og:url、sitemap 里的绝对地址——填错了搜索引擎会索引到错误位置。
+
+
 ## 约定
 
 - **内容与代码分离**：文章是 Markdown，页面是组件，不把正文写进 `.vue`。
