@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useModerationStore } from '@/stores/moderation'
 import { findPost, neighbours, relatedPosts } from '@/lib/content'
 import { formatDate } from '@/lib/format'
+import { readProgress, saveProgress, progressLabel } from '@/lib/reading'
 
 const route = useRoute()
 const router = useRouter()
@@ -40,23 +41,28 @@ const nav = computed(() => {
 const related = computed(() => moderation.visible(relatedPosts(slug.value)))
 const activeHeading = ref('')
 const proseEl = ref<HTMLElement | null>(null)
-const restored = ref(false)
+const restoredAt = ref(0)
 
 const fontStyle = computed(() => ({
   '--font-scale': settings.fontScale === 'sm' ? '0.92' : settings.fontScale === 'lg' ? '1.12' : '1',
 }))
 
-const positionKey = computed(() => `banyue:pos:${slug.value}`)
 
 function backToTop(): void {
   window.scrollTo({ top: 0, behavior: 'smooth' })
-  restored.value = false
+  restoredAt.value = 0
 }
 
 function scrollToHeading(id: string): void {
   const target = document.getElementById(id)
   if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
+
+/* 进度写盘的两个开关，放最前面避免 TDZ：
+ * isDirty  —— 用户真的滚过才允许写，防止挂载瞬间把 0 写进去
+ * restoring —— 恢复位置期间是代码在滚，跳过写盘 */
+let isDirty = false
+let restoring = 0
 
 function onScroll(): void {
   const headings = post.value?.headings ?? []
@@ -70,9 +76,10 @@ function onScroll(): void {
   const doc = document.documentElement
   const max = doc.scrollHeight - window.innerHeight
   if (max > 0) {
-    const ratio = doc.scrollTop / max
-    if (ratio > 0.03 && ratio < 0.97) localStorage.setItem(positionKey.value, String(ratio))
-    else localStorage.removeItem(positionKey.value)
+    // 恢复位置期间是代码在滚，不是用户阅读，跳过写盘
+    if (restoring > 0) return
+    isDirty = true
+    saveProgress(slug.value, doc.scrollTop / max)
   }
 }
 
@@ -100,28 +107,106 @@ async function decorateCodeBlocks(): Promise<void> {
   })
 }
 
+/**
+ * 恢复到上次位置。
+ *
+ * 挂载瞬间正文可能还没排完（图片、字体、代码块陆续撑高），此时
+ * scrollHeight 偏小，按比例算出的目标也偏小，滚过去等于没到。
+ * 做法：反复尝试，直到「页面能滚到目标附近」或次数用尽；
+ * 全程压着 restoring，避免过程中的 scroll 事件把进度写回 0。
+ */
 function restorePosition(): void {
-  const saved = Number(localStorage.getItem(positionKey.value) ?? '0')
-  if (!saved || saved < 0.03) return
+  const saved = readProgress(slug.value)
+  if (saved < 0.03) return
+  restoredAt.value = saved
+  // 同步置位：从这一刻起 onScroll 不再写盘，直到滚到位
+  restoring += 1
+
+  let attempts = 0
+  const TICK = 100
+  const MAX_ATTEMPTS = 12
+
+  const step = (): void => {
+    attempts += 1
+    const doc = document.documentElement
+    const max = doc.scrollHeight - window.innerHeight
+    const target = max > 0 ? max * saved : 0
+    if (max > 0) window.scrollTo({ top: target, behavior: 'auto' })
+
+    const arrived = max > 0 && Math.abs(window.scrollY - target) <= 30
+    // 读到最后一段时滚不到精确比例，到底就算到位
+    const atBottom =
+      saved > 0.9 && max > 0 && window.scrollY + window.innerHeight >= doc.scrollHeight - 30
+
+    if (arrived || atBottom || attempts >= MAX_ATTEMPTS) {
+      // 稳定一帧再放开写盘，避免放手瞬间的抖动被记成新进度
+      window.setTimeout(() => {
+        restoring = Math.max(0, restoring - 1)
+        // 恢复完成后把标记为真，后续滚动才会正常记录
+        isDirty = false
+      }, 250)
+      return
+    }
+    window.setTimeout(step, TICK)
+  }
+
+  step()
+}
+
+/**
+ * 把当前滚动比例落盘。
+ * 只在「真的滚动过」之后才写：页面刚挂载或路由切换瞬间 scrollTop 还是 0，
+ * 这时写会把已有进度清掉。
+ */
+function savePosition(): void {
+  if (!isDirty) return
   const doc = document.documentElement
-  window.scrollTo({ top: (doc.scrollHeight - window.innerHeight) * saved, behavior: 'auto' })
-  restored.value = true
+  const max = doc.scrollHeight - window.innerHeight
+  if (max <= 0) return
+  saveProgress(slug.value, doc.scrollTop / max)
 }
 
 onMounted(() => {
   window.addEventListener('scroll', onScroll, { passive: true })
+  // 关标签页前补一次，避免最后一段没记上
+  window.addEventListener('pagehide', savePosition)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') savePosition()
+  })
   void decorateCodeBlocks()
-  restorePosition()
+
+  // 顺序与守卫都要紧：挂载瞬间 scrollTop 是 0，此时任何写盘都会把上次进度
+  // 判成「未读」并删除。所以先看有没有存档，有就先把 restoring 压上，
+  // 再跑初始化，最后交给 restorePosition 收尾。
+  const saved = readProgress(slug.value)
+  if (saved >= 0.03) restoring += 1
   onScroll()
+  if (saved >= 0.03) {
+    restoring = Math.max(0, restoring - 1)
+    restorePosition()
+  }
 })
 
 onBeforeUnmount(() => {
+  savePosition()
   window.removeEventListener('scroll', onScroll)
+  window.removeEventListener('pagehide', savePosition)
+})
+
+/**
+ * 切换到另一篇文章时回到顶部。
+ * 首次挂载不处理：那时要恢复上次位置，回顶部会把恢复结果冲掉。
+ */
+let mountedOnce = false
+onMounted(() => {
+  mountedOnce = true
 })
 
 watch(post, async () => {
+  if (!mountedOnce) return
+  restoredAt.value = 0
+  // 换文章才回顶部；同一篇重新渲染不动滚动位置
   window.scrollTo({ top: 0 })
-  restored.value = false
   activeHeading.value = post.value?.headings[0]?.id ?? ''
   await decorateCodeBlocks()
 })
@@ -159,7 +244,7 @@ watch(
               行距 {{ settings.lineHeight === 'loose' ? '宽松' : '标准' }}
             </button>
             <button type="button" class="tool-btn" @click="backToTop">回到顶部</button>
-            <span v-if="restored" class="tool-btn on" style="cursor: default">已回到上次位置</span>
+            <span v-if="restoredAt" class="tool-btn on" style="cursor: default">已回到上次位置（{{ progressLabel(restoredAt) }}）</span>
             <button v-if="canModerate" type="button" class="tool-btn" @click="toggleHidden">
               {{ isHidden ? '恢复文章' : '删除文章' }}
             </button>

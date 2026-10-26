@@ -39,11 +39,11 @@ describe('backupFileName', () => {
 describe('summarize', () => {
   it('统计各类条目数量', () => {
     const bundle = makeBundle({
-      drafts: [{}, {}],
-      books: [{}, {}, {}],
-      songs: [{}],
-      bookmarks: [{}],
-      songNotes: [{}],
+      drafts: [{}, {}] as never[],
+      books: [{}, {}, {}] as never[],
+      songs: [{}] as never[],
+      bookmarks: [{}] as never[],
+      songNotes: [{}] as never[],
       mathNotebooks: [
         { name: '本子一', createdAt: 1, updatedAt: 2, pages: [] },
         { name: '本子二', createdAt: 1, updatedAt: 2, pages: [] },
