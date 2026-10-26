@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import { displayLang, highlight } from '@/lib/highlight'
 
 export interface Heading {
   level: number
@@ -52,6 +53,33 @@ md.renderer.rules.link_open = (tokens, idx, options, _env, self) => {
     tokens[idx]?.attrSet('rel', 'noopener noreferrer')
   }
   return self.renderToken(tokens, idx, options)
+}
+
+/**
+ * 代码块：加语法高亮和右上角的语言标签。
+ * markdown-it 默认输出 <pre><code class="language-xxx">，这里整个接管。
+ */
+md.renderer.rules.fence = (tokens, idx) => {
+  const token = tokens[idx]
+  if (!token) return ''
+  const info = (token.info ?? '').trim()
+  const lang = info.split(/\s+/)[0] ?? ''
+  const code = token.content.replace(/\n$/, '')
+  const body = highlight(code, lang)
+  return (
+    `<pre class="code-block" data-lang="${escapeAttr(normalizeLangSafe(lang))}">` +
+    `<span class="code-lang">${escapeAttr(displayLang(lang))}</span>` +
+    `<code>${body}</code>` +
+    `</pre>`
+  )
+}
+
+function normalizeLangSafe(lang: string): string {
+  return lang.trim().toLowerCase() || 'text'
+}
+
+function escapeAttr(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
 /** 渲染一篇文章：返回 HTML 与目录（h2/h3） */

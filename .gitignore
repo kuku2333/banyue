@@ -49,3 +49,6 @@ freellmapi/
 .claude/
 agent/
 skills-lock.json
+
+# 外部工具备份（ACL 修复 / freeapi 数据库）
+.backup/

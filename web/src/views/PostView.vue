@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PostCard from '@/components/PostCard.vue'
+import ImageLightbox from '@/components/ImageLightbox.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useAuthStore } from '@/stores/auth'
 import { useModerationStore } from '@/stores/moderation'
@@ -107,6 +108,35 @@ async function decorateCodeBlocks(): Promise<void> {
   })
 }
 
+/** 正文图片点击放大 */
+const lightbox = ref<{ src: string; alt: string } | null>(null)
+
+async function decorateImages(): Promise<void> {
+  await nextTick()
+  const root = proseEl.value
+  if (!root) return
+  root.querySelectorAll('img').forEach((img) => {
+    if (img.dataset.zoomable === '1') return
+    img.dataset.zoomable = '1'
+    img.loading = 'lazy'
+    img.decoding = 'async'
+    // 键盘也能打开
+    img.tabIndex = 0
+    img.setAttribute('role', 'button')
+    img.setAttribute('aria-label', `查看大图：${img.alt || '正文图片'}`)
+    const open = (): void => {
+      lightbox.value = { src: img.currentSrc || img.src, alt: img.alt || '' }
+    }
+    img.addEventListener('click', open)
+    img.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        open()
+      }
+    })
+  })
+}
+
 /**
  * 恢复到上次位置。
  *
@@ -174,6 +204,7 @@ onMounted(() => {
     if (document.visibilityState === 'hidden') savePosition()
   })
   void decorateCodeBlocks()
+  void decorateImages()
 
   // 顺序与守卫都要紧：挂载瞬间 scrollTop 是 0，此时任何写盘都会把上次进度
   // 判成「未读」并删除。所以先看有没有存档，有就先把 restoring 压上，
@@ -209,6 +240,7 @@ watch(post, async () => {
   window.scrollTo({ top: 0 })
   activeHeading.value = post.value?.headings[0]?.id ?? ''
   await decorateCodeBlocks()
+  await decorateImages()
 })
 
 // 路由表里没有每篇文章的标题，这里补上（分享 / 标签页显示更清楚）
@@ -306,6 +338,13 @@ watch(
       <RouterLink class="btn" to="/">回首页</RouterLink>
     </div>
   </div>
+
+  <ImageLightbox
+    v-if="lightbox"
+    :src="lightbox.src"
+    :alt="lightbox.alt"
+    @close="lightbox = null"
+  />
 </template>
 
 <style scoped>
