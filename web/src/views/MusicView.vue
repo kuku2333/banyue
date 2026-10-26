@@ -309,6 +309,34 @@ const localTracks = computed<Track[]>(() =>
   })),
 )
 
+/** 本地歌单搜索框：按歌名 / 歌手过滤 */
+const localQuery = ref('')
+const filteredLocalTracks = computed<Track[]>(() => {
+  const q = localQuery.value.trim().toLowerCase()
+  if (!q) return localTracks.value
+  return localTracks.value.filter(
+    (track) =>
+      track.title.toLowerCase().includes(q) || track.artist.toLowerCase().includes(q),
+  )
+})
+
+/** 云端歌单搜索框 */
+const cloudQuery = ref('')
+const filteredCloudList = computed<Track[]>(() => {
+  const q = cloudQuery.value.trim().toLowerCase()
+  if (!q) return cloudList.value
+  return cloudList.value.filter(
+    (track) =>
+      track.title.toLowerCase().includes(q) || track.artist.toLowerCase().includes(q),
+  )
+})
+
+/** 按 track.id（cloud-<assetId>）反查原始云端资源，避免过滤后下标错位 */
+function cloudAssetOf(trackId: string): CloudAsset | undefined {
+  const assetId = trackId.startsWith('cloud-') ? trackId.slice(6) : trackId
+  return cloudTracks.value.find((asset) => asset.id === assetId)
+}
+
 async function loadCharts(): Promise<void> {
   chartsLoading.value = true
   chartsError.value = ''
@@ -708,15 +736,26 @@ watch(
       <p v-if="cloudError" class="notice">{{ cloudError }}</p>
       <p class="muted small">本地共 {{ local.length }} 首，存在浏览器 IndexedDB 里。</p>
 
+      <div class="list-filter">
+        <input
+          v-model="localQuery"
+          type="search"
+          class="filter-input"
+          placeholder="搜索本地歌单（歌名 / 歌手）"
+          aria-label="搜索本地歌单"
+        />
+        <span v-if="localQuery" class="muted small">匹配 {{ filteredLocalTracks.length }} 首</span>
+      </div>
+
       <RecordWall
-        v-if="localTracks.length"
-        :tracks="localTracks"
+        v-if="filteredLocalTracks.length"
+        :tracks="filteredLocalTracks"
         :current-id="player.current?.id"
         :playing="player.playing"
         :select-mode="selectMode"
         :selected-ids="selected"
         :selectable="() => true"
-        @play="(index) => playFrom(localTracks, index)"
+        @play="(index) => playFrom(filteredLocalTracks, index)"
         @select="toggleSelect"
       >
         <template #actions="{ track }">
@@ -786,18 +825,28 @@ watch(
       <p v-if="message" class="notice">{{ message }}</p>
       <p v-if="cloudError" class="notice">{{ cloudError }}</p>
       <p v-if="cloudLoading" class="muted small">加载中…</p>
+      <div v-else-if="cloudList.length" class="list-filter">
+        <input
+          v-model="cloudQuery"
+          type="search"
+          class="filter-input"
+          placeholder="搜索云端歌单（歌名 / 歌手）"
+          aria-label="搜索云端歌单"
+        />
+        <span v-if="cloudQuery" class="muted small">匹配 {{ filteredCloudList.length }} 首</span>
+      </div>
       <RecordWall
-        v-else-if="cloudList.length"
-        :tracks="cloudList"
+        v-else-if="filteredCloudList.length"
+        :tracks="filteredCloudList"
         :current-id="player.current?.id"
         :playing="player.playing"
         :select-mode="selectMode"
         :selected-ids="selected"
-        :selectable="(_track, index) => cloudDeletable(cloudTracks[index])"
-        @play="(index) => playFrom(cloudList, index)"
+        :selectable="(track) => cloudDeletable(cloudAssetOf(track.id))"
+        @play="(index) => playFrom(filteredCloudList, index)"
         @select="toggleSelect"
       >
-        <template #actions="{ track, index }">
+        <template #actions="{ track }">
           <template v-if="!selectMode">
             <button
               type="button"
@@ -810,22 +859,22 @@ watch(
             <button
               type="button"
               class="mini-act"
-              :disabled="cloudBusy === cloudTracks[index]?.id"
+              :disabled="cloudBusy === cloudAssetOf(track.id)?.id"
               title="下载到本地（本地已有同文件会跳过）"
-              @click="cloudTracks[index] && downloadToLocal(cloudTracks[index]!)"
+              @click="cloudAssetOf(track.id) && downloadToLocal(cloudAssetOf(track.id)!)"
             >
               ↓
             </button>
             <button
-              v-if="cloudDeletable(cloudTracks[index])"
+              v-if="cloudDeletable(cloudAssetOf(track.id))"
               type="button"
               class="mini-act danger"
               title="删除"
-              @click="removeCloud(cloudTracks[index]!)"
+              @click="removeCloud(cloudAssetOf(track.id)!)"
             >
               ×
             </button>
-            <span class="mini-meta">{{ formatSize(cloudTracks[index]?.size ?? 0) }}</span>
+            <span class="mini-meta">{{ formatSize(cloudAssetOf(track.id)?.size ?? 0) }}</span>
           </template>
         </template>
       </RecordWall>
@@ -930,6 +979,36 @@ watch(
 <style scoped>
 .panel {
   margin-top: 20px;
+}
+
+/* 歌单内搜索过滤 */
+.list-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 8px;
+}
+
+.filter-input {
+  flex: 1;
+  max-width: 360px;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font: inherit;
+}
+
+.filter-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (max-width: 600px) {
+  .filter-input {
+    max-width: none;
+  }
 }
 
 .chips.small .chip,
