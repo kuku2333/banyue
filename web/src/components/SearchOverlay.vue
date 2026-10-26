@@ -3,29 +3,55 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { posts } from '@/lib/content'
 import { formatDate } from '@/lib/format'
+import { KIND_LABEL, libraryEntries, runSearch, staticEntries, type SearchEntry, type SearchItem } from '@/lib/search'
 import { useModerationStore } from '@/stores/moderation'
+import { usePlayerStore } from '@/stores/player'
 
 const props = defineProps<{ open: boolean }>()
 const emit = defineEmits<{ 'update:open': [value: boolean] }>()
 
 const router = useRouter()
 const moderation = useModerationStore()
+const player = usePlayerStore()
+
 const keyword = ref('')
 const activeIndex = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
 
-const results = computed(() => {
-  // 被管理员隐藏的文章不该从搜索里漏出来
-  const source = moderation.visible(posts)
-  const q = keyword.value.trim().toLowerCase()
-  if (!q) return source.slice(0, 5)
-  return source
-    .filter((post) => {
-      const haystack = `${post.title} ${post.excerpt} ${post.tags.join(' ')} ${post.html}`
-      return haystack.toLowerCase().includes(q)
-    })
-    .slice(0, 8)
-})
+/** 全站索引：静态部分立即就绪，书架/音乐异步补进来 */
+const entries = ref<SearchEntry[]>([])
+const loadingLibrary = ref(false)
+
+const results = computed<SearchItem[]>(() => runSearch(keyword.value, entries.value))
+
+/** 空关键词时给几篇最近的，别让框里空着 */
+const fallback = computed(() =>
+  moderation
+    .visible(posts)
+    .slice(0, 5)
+    .map((post) => ({
+      key: `post:${post.slug}`,
+      kind: 'post' as const,
+      title: post.title,
+      subtitle: `${formatDate(post.date)} · ${post.tags.join(' / ')}`,
+      haystack: '',
+      route: `/post/${post.slug}`,
+      score: 0,
+    })),
+)
+
+const shown = computed<SearchItem[]>(() => (keyword.value.trim() ? results.value : fallback.value))
+
+async function loadIndex(): Promise<void> {
+  entries.value = staticEntries(moderation.visible(posts))
+  loadingLibrary.value = true
+  try {
+    const library = await libraryEntries()
+    entries.value = [...entries.value, ...library]
+  } finally {
+    loadingLibrary.value = false
+  }
+}
 
 watch(
   () => props.open,
@@ -35,11 +61,13 @@ watch(
       activeIndex.value = 0
       await nextTick()
       inputRef.value?.focus()
+      // 每次打开都重建，书架/音乐可能刚变过
+      void loadIndex()
     }
   },
 )
 
-watch(results, () => {
+watch(shown, () => {
   activeIndex.value = 0
 })
 
@@ -47,29 +75,39 @@ function close(): void {
   emit('update:open', false)
 }
 
-function go(slug: string): void {
+function activate(item: SearchItem): void {
   close()
-  void router.push(`/post/${slug}`)
+  if (item.track) {
+    void player.playOne(item.track)
+    return
+  }
+  if (item.route) void router.push(item.route)
 }
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.key === 'ArrowDown') {
     event.preventDefault()
-    activeIndex.value = (activeIndex.value + 1) % Math.max(results.value.length, 1)
+    activeIndex.value = (activeIndex.value + 1) % Math.max(shown.value.length, 1)
   } else if (event.key === 'ArrowUp') {
     event.preventDefault()
-    activeIndex.value =
-      (activeIndex.value - 1 + results.value.length) % Math.max(results.value.length, 1)
+    activeIndex.value = (activeIndex.value - 1 + shown.value.length) % Math.max(shown.value.length, 1)
   } else if (event.key === 'Enter') {
-    const target = results.value[activeIndex.value]
-    if (target) go(target.slug)
+    const target = shown.value[activeIndex.value]
+    if (target) activate(target)
   }
 }
 </script>
 
 <template>
   <Transition name="search">
-    <div v-if="open" class="search-layer" role="dialog" aria-modal="true" aria-label="搜索文章" @click.self="close">
+    <div
+      v-if="open"
+      class="search-layer"
+      role="dialog"
+      aria-modal="true"
+      aria-label="全站搜索"
+      @click.self="close"
+    >
       <div class="search-box">
         <div class="search-field">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -80,27 +118,32 @@ function onKeydown(event: KeyboardEvent): void {
             ref="inputRef"
             v-model="keyword"
             type="search"
-            placeholder="搜索标题、摘要、正文或标签…"
+            placeholder="搜索文章、书、音乐、标签…"
             autocomplete="off"
             aria-label="搜索关键词"
             @keydown="onKeydown"
           />
         </div>
-        <div class="search-hint">↑ ↓ 选择 · Enter 打开 · Esc 关闭</div>
+        <div class="search-hint">
+          ↑ ↓ 选择 · Enter 打开 · Esc 关闭<template v-if="loadingLibrary"> · 正在加载书架与音乐…</template>
+        </div>
         <div class="search-results">
           <button
-            v-for="(post, index) in results"
-            :key="post.slug"
+            v-for="(item, index) in shown"
+            :key="item.key"
             type="button"
             class="search-item"
             :class="{ on: index === activeIndex }"
-            @click="go(post.slug)"
+            @click="activate(item)"
             @mouseenter="activeIndex = index"
           >
-            <b>{{ post.title }}</b>
-            <span>{{ formatDate(post.date) }} · {{ post.tags.join(' / ') }}</span>
+            <span class="kind" :data-kind="item.kind">{{ KIND_LABEL[item.kind] }}</span>
+            <span class="body">
+              <b>{{ item.title }}</b>
+              <span>{{ item.subtitle }}</span>
+            </span>
           </button>
-          <p v-if="!results.length" class="empty">没有找到匹配的文章</p>
+          <p v-if="!shown.length && keyword.trim()" class="empty">没有找到匹配的内容</p>
         </div>
       </div>
     </div>
@@ -108,6 +151,54 @@ function onKeydown(event: KeyboardEvent): void {
 </template>
 
 <style scoped>
+.search-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kind {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+}
+
+.kind[data-kind='post'] {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
+.kind[data-kind='book'] {
+  color: var(--accent-2);
+  border-color: var(--accent-line);
+}
+
+.kind[data-kind='track'] {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.kind[data-kind='tag'] {
+  color: var(--dim);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+/* 标题不能被外层 span 的 muted 色带灰 */
+.body b {
+  color: var(--text);
+}
+
 .search-enter-active,
 .search-leave-active {
   transition: opacity 0.16s ease;
