@@ -106,3 +106,69 @@ describe('睡眠定时', () => {
     vi.useRealTimers()
   })
 })
+
+describe('偏爱度', () => {
+  it('缺省为 1，写入夹紧到 [0,2]', () => {
+    const player = usePlayerStore()
+    expect(player.getPreference('new')).toBe(1)
+    player.setPreference('new', 5)
+    expect(player.getPreference('new')).toBe(2)
+    player.setPreference('new', -3)
+    expect(player.getPreference('new')).toBe(0)
+  })
+
+  it('顺序模式：playList 按偏爱度稳定降序，同分保持录入序', async () => {
+    const player = usePlayerStore()
+    player.mode = 'order'
+    player.setPreference('a', 0.5)
+    player.setPreference('b', 2)
+    player.setPreference('c', 2) // 与 b 同分，保持 b 在前
+    player.setPreference('d', 0)
+    await player.playList([makeTrack('a'), makeTrack('b'), makeTrack('c'), makeTrack('d')])
+    expect(player.queue.map((t) => t.id)).toEqual(['b', 'c', 'a', 'd'])
+  })
+
+  it('随机/单曲模式：playList 保持原录入序，不按偏爱度重排', async () => {
+    const player = usePlayerStore()
+    player.mode = 'shuffle'
+    player.setPreference('a', 2)
+    player.setPreference('b', 0)
+    await player.playList([makeTrack('a'), makeTrack('b'), makeTrack('c')])
+    expect(player.queue.map((t) => t.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('随机模式：偏爱度高的歌被抽中明显更频繁', async () => {
+    const player = usePlayerStore()
+    player.mode = 'shuffle'
+    player.queue = [makeTrack('hi'), makeTrack('lo'), makeTrack('mid')]
+    player.setPreference('hi', 2)
+    player.setPreference('lo', 0.2)
+    player.setPreference('mid', 1)
+    player.index = 0
+    const tally: Record<string, number> = { hi: 0, lo: 0, mid: 0 }
+    // 从 hi 出发，走 400 次加权随机，统计落点分布
+    for (let i = 0; i < 400; i++) {
+      await player.advance()
+      tally[player.current!.id]++
+    }
+    // 偏爱度最高(hi)应是最常落到的；最低(lo)应少于 hi
+    expect(tally.hi).toBe(Math.max(tally.hi, tally.lo, tally.mid))
+    expect(tally.hi).toBeGreaterThan(tally.lo)
+  })
+
+  it('偏爱度为 0 的歌在随机里不被抽中（存在其它可选项时权重为 0）', async () => {
+    const player = usePlayerStore()
+    player.mode = 'shuffle'
+    player.queue = [makeTrack('hot'), makeTrack('cold'), makeTrack('warm')]
+    player.setPreference('hot', 2)
+    player.setPreference('cold', 0)
+    player.setPreference('warm', 1)
+    player.index = 0
+    let coldHits = 0
+    for (let i = 0; i < 200; i++) {
+      await player.advance()
+      if (player.current!.id === 'cold') coldHits++
+    }
+    expect(coldHits).toBe(0)
+  })
+})

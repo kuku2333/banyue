@@ -466,6 +466,10 @@ onBeforeUnmount(() => {
             <span class="q-grip" aria-hidden="true">⋮⋮</span>
             <button type="button" class="q-main" @click="player.jumpTo(i)">
               <b>{{ track.title }}</b>
+              <span class="q-pref-row">
+                <button type="button" class="q-pref" :title="`偏爱度 ${player.getPreference(track.id).toFixed(2)}`" @click="player.setPreference(track.id, player.getPreference(track.id) - 0.1)">♥ {{ player.getPreference(track.id).toFixed(1) }}</button>
+                <button type="button" class="q-pref up" @click="player.setPreference(track.id, player.getPreference(track.id) + 0.1)">＋</button>
+              </span>
               <span>{{ track.artist || (track.local ? '本地文件' : '') }}</span>
             </button>
             <button type="button" class="q-del" aria-label="从队列移除" @click="player.removeAt(i)">×</button>
@@ -482,6 +486,20 @@ onBeforeUnmount(() => {
         <div class="p-meta">
           <b>{{ player.current?.title }}</b>
           <span>{{ player.current?.artist || '未知歌手' }}</span>
+          <label class="pref">
+            <span class="pref-label">偏爱度</span>
+            <input
+              class="pref-range"
+              type="range"
+              min="0"
+              max="2"
+              step="0.05"
+              :value="player.getPreference(player.current?.id ?? '')"
+              :title="`偏爱度 ${player.getPreference(player.current?.id ?? '').toFixed(2)}（0 听腻·2 最偏爱·默认 1）`"
+              @input="player.setPreference(player.current?.id ?? '', Number(($event.target as HTMLInputElement).value))"
+            />
+            <span class="pref-val">{{ player.getPreference(player.current?.id ?? '').toFixed(2) }}</span>
+          </label>
         </div>
         <button
           type="button"
@@ -1089,6 +1107,56 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 当前歌曲偏爱度：量程 0–2，细步长 */
+.pref {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.pref-label {
+  flex: none;
+}
+.pref-range {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--accent);
+  height: 14px;
+}
+.pref-val {
+  flex: none;
+  width: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* 队列里每首歌的偏爱度微调 */
+.q-pref-row {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 6px;
+}
+.q-pref {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 0.66rem;
+  padding: 1px 5px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.q-pref:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.q-pref.up:hover {
+  color: #fb7185;
 }
 
 /* 可见的细条只有 4px，但热区撑到 22px——否则很难点中 */

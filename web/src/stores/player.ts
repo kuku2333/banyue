@@ -29,6 +29,64 @@ export const usePlayerStore = defineStore('player', () => {
   const rate = useStorage<number>('banyue:player:rate', 1)
   /** 最近播放（最新在前，最多 30 首） */
   const recent = useStorage<Track[]>('banyue:player:recent', [])
+  /**
+   * 每首歌的偏爱度：初始 1，范围 0–2。
+   * 0 = 听腻了（随机几乎不打、顺序沉底但不删除）；2 = 特别偏爱（更靠前/更常播）。
+   * 挂在 track id 上，与队列解耦，换列表也不丢。
+   */
+  const preferences = useStorage<Record<string, number>>('banyue:track:preference', {})
+  /** 读某首歌的偏爱度，缺省 1 */
+  function getPreference(id: string): number {
+    const v = preferences.value[id]
+    return typeof v === 'number' && Number.isFinite(v) ? v : 1
+  }
+  /** 设偏爱度并夹紧到 [0, 2] */
+  function setPreference(id: string, value: number): void {
+    const clamped = Math.min(2, Math.max(0, Number.isFinite(value) ? value : 1))
+    preferences.value = { ...preferences.value, [id]: clamped }
+  }
+  /** 顺序模式：按偏爱度稳定降序（同分保持原录入次序）。返回新数组，不修改入参。 */
+  function preferenceOrder(list: Track[]): Track[] {
+    return [...list]
+      .map((track, i) => ({ track, i, p: getPreference(track.id) }))
+      .sort((a, b) => b.p - a.p || a.i - b.i)
+      .map((entry) => entry.track)
+  }
+  /** 随机模式：按偏爱度加权抽一首（权重 = max(0, 偏爱度)），排除 exclude 这首。 */
+  function weightedPick(excludeId: string | undefined): number {
+    const list = queue.value
+    const n = list.length
+    const weights = list.map((track) => Math.max(0, getPreference(track.id)))
+    const total = weights.reduce((sum, w) => sum + w, 0)
+    // 加权抽取：只在有权重且非「当前」的歌里选
+    let r = Math.random() * total
+    let picked = -1
+    for (let i = 0; i < n; i++) {
+      if (list[i]!.id === excludeId || weights[i]! <= 0) continue
+      r -= weights[i]!
+      if (r <= 0) {
+        picked = i
+        break
+      }
+    }
+    // 兜底：没抽到（极端情况）就取第一首有权重且非当前的
+    if (picked < 0) {
+      for (let i = 0; i < n; i++) {
+        if (list[i]!.id !== excludeId && weights[i]! > 0) {
+          picked = i
+          break
+        }
+      }
+    }
+    // 实在没有（全 0 或只剩当前一首）：退回均匀随机
+    if (picked < 0) {
+      let target = index.value
+      let guard = 0
+      while (target === index.value && guard++ < 20) target = Math.floor(Math.random() * n)
+      return target
+    }
+    return picked
+  }
   /** 睡眠定时：剩余秒数，0 表示没开 */
   const sleepRemaining = ref(0)
   let sleepTimer: ReturnType<typeof setInterval> | null = null
@@ -306,8 +364,12 @@ export const usePlayerStore = defineStore('player', () => {
 
   async function playList(tracks: Track[], start = 0): Promise<void> {
     if (!tracks.length) return
-    queue.value = [...tracks]
-    index.value = Math.min(Math.max(start, 0), tracks.length - 1)
+    // 顺序模式：按偏爱度稳定重排（同分保持录入序）；随机/单曲保持原序
+    const ordered = mode.value === 'order' ? preferenceOrder(tracks) : [...tracks]
+    queue.value = ordered
+    // start 是原始 tracks 的下标，排序后按 id 重新定位
+    const startTrack = tracks[Math.min(Math.max(start, 0), tracks.length - 1)]
+    index.value = startTrack ? Math.max(0, ordered.findIndex((t) => t.id === startTrack.id)) : 0
     collapsed.value = false
     await load(queue.value[index.value]!)
   }
@@ -380,9 +442,7 @@ export const usePlayerStore = defineStore('player', () => {
       return
     }
     if (mode.value === 'shuffle' && queue.value.length > 1) {
-      let target = index.value
-      while (target === index.value) target = Math.floor(Math.random() * queue.value.length)
-      index.value = target
+      index.value = weightedPick(current.value?.id)
       await load(queue.value[index.value]!)
       return
     }
@@ -535,6 +595,8 @@ export const usePlayerStore = defineStore('player', () => {
     cycleRate,
     setSleepTimer,
     clearSleepTimer,
+    getPreference,
+    setPreference,
     bindMediaSession,
     updateMediaSession,
   }
