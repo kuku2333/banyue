@@ -164,9 +164,19 @@ function onOrbClick(): void {
 function onWheel(event: WheelEvent): void {
   // 队列面板本身要能滚，别把滚轮全吃掉
   if ((event.target as HTMLElement | null)?.closest('.queue-panel')) return
+  // 滚轮落在偏爱度控件上时，由偏爱度的滚轮处理接管，这里不调音量
+  if ((event.target as HTMLElement | null)?.closest('.pref, .q-pref-row')) return
   event.preventDefault()
   const step = event.deltaY < 0 ? 0.05 : -0.05
   player.setVolume(player.volume + step)
+}
+
+/** 偏爱度控件上的滚轮：调偏爱度而不是音量（步长 0.05，与滑块一致） */
+function onPrefWheel(event: WheelEvent, id: string): void {
+  if (!id) return
+  event.preventDefault()
+  const step = event.deltaY < 0 ? 0.05 : -0.05
+  player.setPreference(id, player.getPreference(id) + step)
 }
 
 /* ---------- 队列拖拽排序 ---------- */
@@ -466,8 +476,8 @@ onBeforeUnmount(() => {
             <span class="q-grip" aria-hidden="true">⋮⋮</span>
             <button type="button" class="q-main" @click="player.jumpTo(i)">
               <b>{{ track.title }}</b>
-              <span class="q-pref-row">
-                <button type="button" class="q-pref" :title="`偏爱度 ${player.getPreference(track.id).toFixed(2)}`" @click="player.setPreference(track.id, player.getPreference(track.id) - 0.1)">♥ {{ player.getPreference(track.id).toFixed(1) }}</button>
+              <span class="q-pref-row" @wheel.prevent="onPrefWheel($event, track.id)">
+                <button type="button" class="q-pref" :title="`偏爱度 ${player.getPreference(track.id).toFixed(2)}（滚轮也可调）`" @click="player.setPreference(track.id, player.getPreference(track.id) - 0.1)">♥ {{ player.getPreference(track.id).toFixed(1) }}</button>
                 <button type="button" class="q-pref up" @click="player.setPreference(track.id, player.getPreference(track.id) + 0.1)">＋</button>
               </span>
               <span>{{ track.artist || (track.local ? '本地文件' : '') }}</span>
@@ -495,8 +505,9 @@ onBeforeUnmount(() => {
               max="2"
               step="0.05"
               :value="player.getPreference(player.current?.id ?? '')"
-              :title="`偏爱度 ${player.getPreference(player.current?.id ?? '').toFixed(2)}（0 听腻·2 最偏爱·默认 1）`"
+              :title="`偏爱度 ${player.getPreference(player.current?.id ?? '').toFixed(2)}（0 听腻·2 最偏爱·默认 1；滚轮也可调）`"
               @input="player.setPreference(player.current?.id ?? '', Number(($event.target as HTMLInputElement).value))"
+              @wheel.prevent="onPrefWheel($event, player.current?.id ?? '')"
             />
             <span class="pref-val">{{ player.getPreference(player.current?.id ?? '').toFixed(2) }}</span>
           </label>
