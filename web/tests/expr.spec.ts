@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compileExpr, derivativeOf, evaluate } from '@/lib/expr'
+import { compileExpr, definiteIntegral, derivativeOf, evaluate } from '@/lib/expr'
 
 describe('表达式解析器', () => {
   it('基本四则运算', () => {
@@ -63,5 +63,23 @@ describe('数值导数', () => {
     const { fn } = compileExpr('sin(x)')
     expect(derivativeOf(fn, 0)).toBeCloseTo(1, 3)
     expect(derivativeOf(fn, Math.PI / 2)).toBeCloseTo(0, 3)
+  })
+})
+
+describe('定积分数值近似', () => {
+  it('∫₀¹ x² dx = 1/3', () => {
+    const { fn } = compileExpr('x^2')
+    expect(definiteIntegral(fn, 0, 1)).toBeCloseTo(1 / 3, 3)
+  })
+
+  it('∫₀^π sin(x) dx = 2', () => {
+    const { fn } = compileExpr('sin(x)')
+    expect(definiteIntegral(fn, 0, Math.PI)).toBeCloseTo(2, 3)
+  })
+
+  it('上下限相同结果为 0，非法输入为 NaN', () => {
+    const { fn } = compileExpr('x')
+    expect(definiteIntegral(fn, 2, 2)).toBe(0)
+    expect(Number.isNaN(definiteIntegral(fn, NaN, 1))).toBe(true)
   })
 })

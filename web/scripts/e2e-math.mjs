@@ -124,6 +124,49 @@ const funcChips2 = await evaluate(`document.querySelectorAll('.func-chip').lengt
 console.log('函数数量(加第二条):', funcChips2)
 if (funcChips2 < 2) throw new Error('添加第二条函数失败')
 
+// === 新增：快捷函数按钮 + 公式模板 + 代入求值 + 定积分 ===
+const hasToken = await evaluate(`[...document.querySelectorAll('.token-btn')].some(b => b.textContent.trim()==='sin')`)
+console.log('快捷函数按钮(sin):', hasToken)
+if (!hasToken) throw new Error('缺少快捷函数按钮')
+
+const hasTemplate = await evaluate(`[...document.querySelectorAll('.template-btn')].some(b => b.textContent.includes('二次函数'))`)
+console.log('公式模板按钮:', hasTemplate)
+if (!hasTemplate) throw new Error('缺少公式模板按钮')
+
+// 点公式模板「二次函数」应把表达式填进输入框
+await evaluate(`[...document.querySelectorAll('.template-btn')].find(b=>b.textContent.includes('二次函数'))?.click()`)
+await wait(200)
+const tplVal = await evaluate(`document.querySelector('.expr-input')?.value`)
+console.log('点模板后输入框:', tplVal)
+if (!tplVal || !tplVal.includes('x^2')) throw new Error('模板未填入')
+
+// 点快捷插入「sin」应把 sin() 插入到光标处
+await evaluate(`
+  (() => {
+    const input = document.querySelector('.expr-input');
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  })()
+`)
+await wait(100)
+await evaluate(`[...document.querySelectorAll('.token-btn')].find(b => b.textContent.trim()==='sin')?.click()`)
+await wait(200)
+const afterInsert = await evaluate(`document.querySelector('.expr-input')?.value`)
+console.log('插入 sin 后:', afterInsert)
+if (!afterInsert || !afterInsert.includes('sin(')) throw new Error('快捷插入未生效')
+
+// 代入求值：默认 x=1；已画 x^2，f≈1, f'≈2
+await wait(400)
+const evalOut = await evaluate(`document.querySelector('.calc-out')?.textContent ?? ''`)
+console.log('代入求值区:', evalOut.replace(/\\s+/g, ' ').trim().slice(0, 60))
+if (!evalOut || !evalOut.includes('x^2')) throw new Error('代入求值区未出现')
+
+// 定积分：默认 ∫₀¹，x^2 ≈ 0.333
+const integOut = await evaluate(`[...document.querySelectorAll('.calc-row')].map(r=>r.textContent).join(' | ') ?? ''`)
+console.log('定积分区:', integOut.replace(/\\s+/g, ' ').trim().slice(0, 60))
+if (!integOut.includes('≈')) throw new Error('定积分区未出现')
+
 await shot('math-functions', 1440, 1000)
 
 // 4. 切换坐标工具（切线）

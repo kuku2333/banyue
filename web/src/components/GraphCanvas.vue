@@ -62,6 +62,20 @@ let drawStart: { x: number; y: number } | null = null
 let currentDrawEnd: { x: number; y: number } | null = null
 let hoverWorld: { x: number; y: number } | null = null
 
+/* 双指手势（移动端捏合缩放 + 双指平移） */
+const pointers = new Map<number, { x: number; y: number }>()
+let pinch: { dist: number; mid: { x: number; y: number }; scale: number; cx: number; cy: number } | null = null
+
+function pinchMetrics(): { dist: number; mid: { x: number; y: number } } {
+  const pts = [...pointers.values()]
+  const dx = pts[0]!.x - pts[1]!.x
+  const dy = pts[0]!.y - pts[1]!.y
+  return {
+    dist: Math.hypot(dx, dy) || 1,
+    mid: { x: (pts[0]!.x + pts[1]!.x) / 2, y: (pts[0]!.y + pts[1]!.y) / 2 },
+  }
+}
+
 /* 画布尺寸 */
 const cssW = ref(0)
 const cssH = ref(0)
@@ -341,6 +355,18 @@ function onPointerDown(event: PointerEvent): void {
   const el = canvasRef.value
   if (!el) return
   el.setPointerCapture(event.pointerId)
+  pointers.set(event.pointerId, pointerPos(event))
+
+  // 第二根手指落下：进入捏合/双指平移，放弃单指的工具操作
+  if (pointers.size === 2) {
+    dragging = false
+    drawStart = null
+    currentDrawEnd = null
+    const m = pinchMetrics()
+    pinch = { dist: m.dist, mid: m.mid, scale: view.value.scale, cx: view.value.cx, cy: view.value.cy }
+    return
+  }
+
   const pos = pointerPos(event)
   const world = screenToWorld(pos.x, pos.y)
 
@@ -390,6 +416,22 @@ function onPointerDown(event: PointerEvent): void {
 
 function onPointerMove(event: PointerEvent): void {
   const pos = pointerPos(event)
+  if (pointers.has(event.pointerId)) pointers.set(event.pointerId, pos)
+
+  // 双指：围绕两指中点缩放（捏合）+ 双指整体平移
+  if (pointers.size >= 2 && pinch) {
+    const m = pinchMetrics()
+    const newScale = Math.min(2000, Math.max(0.5, pinch.scale * (m.dist / pinch.dist)))
+    // 取中点当前对应的世界坐标，缩放后让它仍停在原屏幕位置 —— 平移也随之自然生效
+    const worldMid = screenToWorld(m.mid.x, m.mid.y)
+    view.value.scale = newScale
+    view.value.cx = worldMid.x - (m.mid.x - cssW.value / 2) / newScale
+    view.value.cy = worldMid.y + (m.mid.y - cssH.value / 2) / newScale
+    emitView()
+    draw()
+    return
+  }
+
   const world = screenToWorld(pos.x, pos.y)
   hoverWorld = { x: world.x, y: world.y }
 
@@ -415,6 +457,19 @@ function onPointerMove(event: PointerEvent): void {
 function onPointerUp(event: PointerEvent): void {
   const el = canvasRef.value
   if (el) el.releasePointerCapture(event.pointerId)
+  pointers.delete(event.pointerId)
+
+  // 双指松开回到单指：结束缩放，并让剩下一个手指接手平移
+  if (pinch) {
+    pinch = null
+    if (pointers.size === 1) {
+      const remaining = [...pointers.entries()][0]!
+      const p = remaining[1]
+      dragging = true
+      dragStart = { px: p.x, py: p.y, cx: view.value.cx, cy: view.value.cy }
+    }
+    return
+  }
 
   if (dragging) {
     dragging = false

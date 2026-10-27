@@ -16,7 +16,7 @@ import {
   type MathNotebook,
   type MathPage,
 } from '@/lib/db'
-import { compileExpr } from '@/lib/expr'
+import { compileExpr, definiteIntegral, derivativeOf, evaluate } from '@/lib/expr'
 import { differentiate } from '@/lib/symbolic'
 
 /** 数学工具：平面坐标系 + 草稿纸，可自由写画、作图、分页、保存。 */
@@ -46,6 +46,89 @@ const graphColor = ref('#5eead4')
 /* 函数输入 */
 const exprInput = ref('')
 const exprColor = ref('#5eead4')
+const exprInputEl = ref<HTMLInputElement | null>(null)
+
+/** 快捷插入：在光标处插入函数片段（sin( 等留括号方便续写） */
+const FUNC_TOKENS: { label: string; insert: string; caret?: number }[] = [
+  { label: 'sin', insert: 'sin()', caret: 4 },
+  { label: 'cos', insert: 'cos()', caret: 4 },
+  { label: 'tan', insert: 'tan()', caret: 4 },
+  { label: 'exp', insert: 'exp()', caret: 4 },
+  { label: 'ln', insert: 'ln()', caret: 3 },
+  { label: '√', insert: 'sqrt()', caret: 5 },
+  { label: '|x|', insert: 'abs()', caret: 4 },
+  { label: 'x²', insert: '^2' },
+  { label: 'xⁿ', insert: '^' },
+  { label: 'π', insert: 'pi' },
+  { label: '( )', insert: '()', caret: 1 },
+  { label: '÷', insert: '/' },
+]
+
+function insertToken(token: { insert: string; caret?: number }): void {
+  const el = exprInputEl.value
+  const text = exprInput.value
+  const start = el?.selectionStart ?? text.length
+  const end = el?.selectionEnd ?? text.length
+  const next = text.slice(0, start) + token.insert + text.slice(end)
+  exprInput.value = next
+  const pos = start + (token.caret ?? token.insert.length)
+  // 等 DOM 更新后把光标放到插入内容里/后
+  requestAnimationFrame(() => {
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(pos, pos)
+  })
+}
+
+/** 常用公式模板：点一下直接填进输入框（覆盖式） */
+const TEMPLATES: { label: string; expr: string }[] = [
+  { label: '二次函数', expr: 'a*x^2 + b*x + c' },
+  { label: '正弦波', expr: 'A*sin(w*x + phi)' },
+  { label: '指数衰减', expr: 'A*exp(-k*x)' },
+  { label: '圆（上半）', expr: 'sqrt(r^2 - x^2)' },
+  { label: '有理式', expr: '1/(1 + x^2)' },
+  { label: '对数曲线', expr: 'log(x, 2)' },
+]
+
+function applyTemplate(expr: string): void {
+  exprInput.value = expr
+  requestAnimationFrame(() => exprInputEl.value?.focus())
+}
+
+/* ---------- 代入求值 + 定积分 ---------- */
+const evalX = ref('1')
+const evalRows = computed(() => {
+  const x = Number(evalX.value)
+  if (!Number.isFinite(x)) return []
+  return (currentPage.value?.functions ?? []).map((f) => {
+    const compiled = compileExpr(f.expr)
+    if (compiled.error || !compiled.fn) return { expr: f.expr, fx: NaN, dfx: NaN, error: compiled.error }
+    const fx = evaluate(f.expr, { x })
+    const dfx = derivativeOf(compiled.fn, x)
+    return { expr: f.expr, fx, dfx, error: undefined }
+  })
+})
+
+const integA = ref('0')
+const integB = ref('1')
+const integralRows = computed(() => {
+  const a = Number(integA.value)
+  const b = Number(integB.value)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return []
+  return (currentPage.value?.functions ?? []).map((f) => {
+    const compiled = compileExpr(f.expr)
+    if (compiled.error || !compiled.fn) return { expr: f.expr, value: NaN, error: compiled.error }
+    return { expr: f.expr, value: definiteIntegral(compiled.fn, a, b), error: undefined }
+  })
+})
+
+/** 数值漂亮显示：整数/常规保留 4 位，过小用指数，NaN 显示 — */
+function formatNum(n: number): string {
+  if (!Number.isFinite(n)) return '—'
+  if (n === 0) return '0'
+  if (Math.abs(n) >= 1e-4 && Math.abs(n) < 1e7) return String(Number(n.toFixed(4)))
+  return n.toExponential(3)
+}
 
 /* 几何选中 */
 const selectedGeoId = ref<string | undefined>(undefined)
@@ -434,6 +517,7 @@ watch(
     <!-- 函数输入 -->
     <div class="func-bar">
       <input
+        ref="exprInputEl"
         v-model="exprInput"
         class="expr-input"
         placeholder="输入函数，如 sin(x)、x^2、2x+1、sqrt(x)…"
@@ -441,6 +525,18 @@ watch(
       />
       <input v-model="exprColor" type="color" class="expr-color" title="曲线颜色" />
       <button type="button" class="btn small-btn" @click="addFunction">画曲线</button>
+      <div class="token-row">
+        <button
+          v-for="t in FUNC_TOKENS"
+          :key="t.label"
+          type="button"
+          class="token-btn"
+          :title="`插入 ${t.insert}`"
+          @click="insertToken(t)"
+        >
+          {{ t.label }}
+        </button>
+      </div>
       <div v-if="currentPage?.functions.length" class="func-list">
         <span
           v-for="(f, i) in currentPage.functions"
@@ -467,6 +563,50 @@ watch(
         <code>{{ derivativeText }}</code>
         <span v-if="derivativeError" class="muted small">（{{ derivativeError }}）</span>
       </p>
+
+      <!-- 代入求值：算 f(x) 与 f'(x) 数值 -->
+      <div v-if="currentPage?.functions.length" class="calc-row">
+        <label class="calc-label">代入 x =</label>
+        <input v-model="evalX" class="calc-input" type="text" inputmode="decimal" aria-label="代入的 x 值" />
+        <span class="muted small">数值结果</span>
+        <div class="calc-out">
+          <span v-for="(row, i) in evalRows" :key="i" class="calc-item">
+            <code>{{ row.expr }}</code>
+            <b>f = {{ row.error ? '—' : formatNum(row.fx) }}</b>
+            <b class="muted">f′ = {{ row.error ? '—' : formatNum(row.dfx) }}</b>
+          </span>
+        </div>
+      </div>
+
+      <!-- 定积分：数值近似（辛普森法） -->
+      <div v-if="currentPage?.functions.length" class="calc-row">
+        <label class="calc-label">∫ 从</label>
+        <input v-model="integA" class="calc-input" type="text" inputmode="decimal" aria-label="积分下限" />
+        <label class="calc-label">到</label>
+        <input v-model="integB" class="calc-input" type="text" inputmode="decimal" aria-label="积分上限" />
+        <span class="muted small">面积 ≈</span>
+        <div class="calc-out">
+          <span v-for="(row, i) in integralRows" :key="i" class="calc-item">
+            <code>{{ row.expr }}</code>
+            <b>≈ {{ row.error ? '—' : formatNum(row.value) }}</b>
+          </span>
+        </div>
+      </div>
+
+      <!-- 公式模板库 -->
+      <div class="template-row">
+        <span class="muted small">公式模板：</span>
+        <button
+          v-for="t in TEMPLATES"
+          :key="t.label"
+          type="button"
+          class="template-btn"
+          :title="t.expr"
+          @click="applyTemplate(t.expr)"
+        >
+          {{ t.label }}
+        </button>
+      </div>
     </div>
 
     <!-- 工作区 -->
@@ -696,6 +836,86 @@ watch(
   font-family: var(--mono);
   color: var(--accent);
 }
+
+/* 快捷函数插入 */
+.token-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  width: 100%;
+}
+.token-btn,
+.template-btn {
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.token-btn:hover,
+.template-btn:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+/* 代入求值 / 定积分 一行 */
+.calc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 8px;
+}
+.calc-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.calc-input {
+  width: 72px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  outline: none;
+}
+.calc-input:focus {
+  border-color: var(--accent-line);
+}
+.calc-out {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.calc-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+}
+.calc-item code {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+/* 公式模板库 */
+.template-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  width: 100%;
+  margin-top: 8px;
+}
+
 .func-chip .x {
   color: var(--dim);
   font-size: 0.8rem;

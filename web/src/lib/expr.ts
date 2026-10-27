@@ -48,6 +48,28 @@ export function derivativeOf(fn: MathFunction, x: number, h = 1e-6): number {
   return (right - left) / (2 * h)
 }
 
+/**
+ * 定积分数值近似（复合辛普森法）。
+ * f 在 [a, b] 上的面积；n 为偶数个子区间数（自动向上取偶）。
+ * 遇非有限值返回 NaN。
+ */
+export function definiteIntegral(fn: MathFunction, a: number, b: number, n = 200): number {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return NaN
+  if (a === b) return 0
+  let steps = Math.max(2, Math.floor(n))
+  if (steps % 2 === 1) steps += 1
+  const h = (b - a) / steps
+  let sum = fn(a) + fn(b)
+  if (!Number.isFinite(sum)) return NaN
+  for (let i = 1; i < steps; i++) {
+    const x = a + i * h
+    const y = fn(x)
+    if (!Number.isFinite(y)) return NaN
+    sum += (i % 2 === 0 ? 2 : 4) * y
+  }
+  return (h / 3) * sum
+}
+
 /** 找出函数在 [x0, x0+dir] 上离给定点 (px, py) 最近的点（用于画切线时的切点定位）。 */
 export function nearestPoint(
   fn: MathFunction,
