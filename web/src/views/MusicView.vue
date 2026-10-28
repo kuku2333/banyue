@@ -825,18 +825,20 @@ watch(
       <p v-if="message" class="notice">{{ message }}</p>
       <p v-if="cloudError" class="notice">{{ cloudError }}</p>
       <p v-if="cloudLoading" class="muted small">加载中…</p>
-      <div v-else-if="cloudList.length" class="list-filter">
-        <input
-          v-model="cloudQuery"
-          type="search"
-          class="filter-input"
-          placeholder="搜索云端歌单（歌名 / 歌手）"
-          aria-label="搜索云端歌单"
-        />
-        <span v-if="cloudQuery" class="muted small">匹配 {{ filteredCloudList.length }} 首</span>
-      </div>
-      <RecordWall
-        v-else-if="filteredCloudList.length"
+      <div v-else-if="!cloudList.length" class="empty">云端还没有音乐。把「本地音乐」里的歌传到云端，别人也能听。</div>
+      <template v-else>
+        <div class="list-filter">
+          <input
+            v-model="cloudQuery"
+            type="search"
+            class="filter-input"
+            placeholder="搜索云端歌单（歌名 / 歌手）"
+            aria-label="搜索云端歌单"
+          />
+          <span v-if="cloudQuery" class="muted small">匹配 {{ filteredCloudList.length }} 首</span>
+        </div>
+        <RecordWall
+          v-if="filteredCloudList.length"
         :tracks="filteredCloudList"
         :current-id="player.current?.id"
         :playing="player.playing"
@@ -877,8 +879,9 @@ watch(
             <span class="mini-meta">{{ formatSize(cloudAssetOf(track.id)?.size ?? 0) }}</span>
           </template>
         </template>
-      </RecordWall>
-      <p v-else class="empty">云端还没有音乐。把「本地音乐」里的歌传到云端，别人也能听。</p>
+        </RecordWall>
+        <p v-if="!filteredCloudList.length" class="empty">没有匹配的云端歌曲。</p>
+      </template>
     </section>
 
     <!-- 歌单 -->
