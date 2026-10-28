@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { api } from '@/lib/api'
+import { biliUrl, biliBase, biliUsingLocal } from '@/lib/biliBackend'
 import { fingerprint } from '@/lib/music'
 import { addTrack, findTrackByHash } from '@/lib/db'
 import { listAssets, uploadAsset } from '@/lib/cloud'
@@ -52,6 +53,8 @@ interface PlayInfo {
 }
 
 const input = ref('')
+/** 「一键粘贴」失败时用来把焦点送回输入框，用户可直接 Ctrl+V */
+const inputEl = ref<HTMLInputElement | null>(null)
 const loading = ref(false)
 
 /** 最近解析过的链接（最多 10 条，存在 localStorage） */
@@ -80,9 +83,22 @@ async function openRecent(item: RecentItem): Promise<void> {
   await resolve()
 }
 
-/** 读剪贴板 → 自动解析；浏览器不给读就提示手动粘贴 */
+/**
+ * 读剪贴板 → 自动解析。
+ *
+ * 注意：navigator.clipboard 只在 HTTPS 或 localhost 下可用。用 IP 走 HTTP
+ * 打开时会直接被浏览器禁掉，所以这里给出更明确的提示，并自动聚焦输入框
+ * 让用户直接 Ctrl+V —— 手动粘贴一样能用，只是少了这一步自动化。
+ */
 async function pasteAndResolve(): Promise<void> {
   pasteTip.value = ''
+  const secure = window.isSecureContext
+  if (!secure || !navigator.clipboard?.readText) {
+    pasteTip.value = '当前是 HTTP 访问，浏览器不允许读剪贴板。请点输入框后按 Ctrl+V 粘贴'
+    inputEl.value?.focus()
+    setTimeout(() => (pasteTip.value = ''), 6000)
+    return
+  }
   try {
     const text = await navigator.clipboard.readText()
     const value = text.trim()
@@ -93,7 +109,8 @@ async function pasteAndResolve(): Promise<void> {
     input.value = value
     await resolve()
   } catch {
-    pasteTip.value = '浏览器没给剪贴板权限，请手动粘贴（Ctrl+V）'
+    pasteTip.value = '读剪贴板被拒绝，请手动粘贴（Ctrl+V）'
+    inputEl.value?.focus()
     setTimeout(() => (pasteTip.value = ''), 4000)
   }
 }
@@ -132,7 +149,7 @@ const currentPage = computed<PageInfo | null>(() => video.value?.pages[pageIndex
 
 function proxyUrl(raw: string, extra: Record<string, string> = {}): string {
   const params = new URLSearchParams({ url: raw, ...extra })
-  return `/api/bilibili/stream?${params.toString()}`
+  return biliUrl(`/api/bilibili/stream?${params.toString()}`)
 }
 
 function fmtDuration(seconds: number): string {
@@ -151,7 +168,7 @@ async function resolve(): Promise<void> {
   play.value = null
   trimSrc.value = ''
   try {
-    video.value = await api<VideoInfo>('/api/bilibili/resolve', { method: 'POST', body: { url } })
+    video.value = await api<VideoInfo>(biliUrl('/api/bilibili/resolve'), { method: 'POST', body: { url } })
     remember(url, video.value)
     pageIndex.value = 0
     await loadPlay()
@@ -172,7 +189,7 @@ async function loadPlay(): Promise<void> {
   trimSrc.value = ''
   audioCache.value = null
   try {
-    const data = await api<PlayInfo>(`/api/bilibili/playinfo?aid=${info.aid}&cid=${page.cid}`)
+    const data = await api<PlayInfo>(biliUrl(`/api/bilibili/playinfo?aid=${info.aid}&cid=${page.cid}`))
     play.value = data
     quality.value = data.qualities[0]?.quality ?? data.videos[0]?.quality ?? null
     audioIndex.value = 0
@@ -374,7 +391,7 @@ async function currentCover(): Promise<string> {
   if (!useCover.value) return ''
   const info = video.value
   if (!info?.cover) return ''
-  return compressCover(`/api/bilibili/cover?url=${encodeURIComponent(info.cover)}`)
+  return compressCover(biliUrl(`/api/bilibili/cover?url=${encodeURIComponent(info.cover)}`))
 }
 
 /** 音频的标题与艺人（分P 时用「标题 - 分P」） */
@@ -494,10 +511,15 @@ async function saveToCloud(): Promise<void> {
         粘贴 B站 视频链接，选清晰度下载；也可以只提取音频，在波形上剪出想要的片段导出 WAV。
         仅限个人学习使用，请尊重原作者版权。
       </p>
+      <p v-if="biliUsingLocal()" class="notice small">
+        解析走本机后端（{{ biliBase() }}）——云服务器 IP 会被 B站 拦截，本机网络才通。
+        没开本机后端的话，先在本地跑 <code>cd server &amp;&amp; node src/index.mjs</code>。
+      </p>
     </div>
 
     <form class="search-row" @submit.prevent="resolve">
       <input
+        ref="inputEl"
         v-model="input"
         type="text"
         placeholder="粘贴链接，如 https://www.bilibili.com/video/BV1xx411c7mD"
@@ -531,7 +553,7 @@ async function saveToCloud(): Promise<void> {
 
     <!-- 视频信息 -->
     <section v-if="video" class="video-card">
-      <img class="cover" :src="`/api/bilibili/cover?url=${encodeURIComponent(video.cover)}`" alt="" loading="lazy" />
+      <img class="cover" :src="biliUrl(`/api/bilibili/cover?url=${encodeURIComponent(video.cover)}`)" alt="" loading="lazy" />
       <div class="meta">
         <h2>{{ video.title }}</h2>
         <p class="muted small">
@@ -658,7 +680,7 @@ async function saveToCloud(): Promise<void> {
               v-if="useCover && video"
               class="cover-preview"
               loading="lazy"
-              :src="`/api/bilibili/cover?url=${encodeURIComponent(video.cover)}`"
+              :src="biliUrl(`/api/bilibili/cover?url=${encodeURIComponent(video.cover)}`)"
               alt=""
             />
           </label>
@@ -679,7 +701,7 @@ async function saveToCloud(): Promise<void> {
         :key="`${streamVideoUrl}|${streamAudioUrl}`"
         :video-url="streamVideoUrl"
         :audio-url="streamAudioUrl"
-        :poster="video ? `/api/bilibili/cover?url=${encodeURIComponent(video.cover)}` : ''"
+        :poster="video ? biliUrl(`/api/bilibili/cover?url=${encodeURIComponent(video.cover)}`) : ''"
         :title="video?.title"
         :audio-only="playerMode === 'audio'"
       />

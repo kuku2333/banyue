@@ -42,6 +42,33 @@ const UPLOAD_LIMITS = { book: 50 * 1024 * 1024, track: 40 * 1024 * 1024 }
 /** 每个账号的云端总容量（MB），默认 200 */
 const QUOTA_BYTES = Math.max(1, Number(process.env.BANYUE_QUOTA_MB ?? 200)) * 1024 * 1024
 
+/**
+ * B站解析允许跨域（BANYUE_BILI_CORS）。
+ *
+ * 服务器 IP 常被 B站风控（HTTP 412），所以线上页面可以把 B站请求转给本机
+ * 后端处理——浏览器里的 127.0.0.1 就是用户自己的电脑。这条通道要跨域，
+ * 但只对 B站代理这几个只读接口开放，不放开账号/上传类接口。
+ *
+ * 值为逗号分隔的来源白名单；`*` 表示任意来源。留空则完全关闭（默认）。
+ */
+const BILI_CORS = (process.env.BANYUE_BILI_CORS ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+
+function biliCorsOrigin(req) {
+  if (!BILI_CORS.length) return null
+  const origin = req.headers.origin
+  if (!origin) return null
+  if (BILI_CORS.includes('*')) return '*'
+  return BILI_CORS.includes(origin) ? origin : null
+}
+
+/** 只有这些前缀的接口允许跨域；其余一律不碰 */
+function isBiliProxyPath(pathname) {
+  return pathname.startsWith('/api/bilibili/')
+}
+
 mkdirSync(FILES_DIR, { recursive: true })
 
 function storageUsed(userId) {
@@ -1038,6 +1065,11 @@ route('DELETE', '/api/posts/:slug/hide', async (req, res, params) => {
 
 /* ---------------- B站解析与流代理 ---------------- */
 
+/** 轻量探活：前端用它判断本机后端是否可用，决定 B站请求走本机还是同源 */
+route('GET', '/api/bilibili/ping', async (_req, res) => {
+  send(res, 200, { ok: true, role: 'local', version: 1 })
+})
+
 route('POST', '/api/bilibili/resolve', async (req, res) => {
   const body = await readBody(req)
   try {
@@ -1243,6 +1275,23 @@ function serveStatic(req, res, url) {
 
 async function handleRequest(req, res) {
   const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+
+  // B站代理接口的跨域（只读，不含账号与上传）
+  if (isBiliProxyPath(url.pathname)) {
+    const allowOrigin = biliCorsOrigin(req)
+    if (allowOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', allowOrigin)
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+      res.setHeader('Access-Control-Allow-Headers', 'content-type')
+      res.setHeader('Access-Control-Max-Age', '600')
+      if (allowOrigin !== '*') res.setHeader('Vary', 'Origin')
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204)
+        res.end()
+        return
+      }
+    }
+  }
 
   if (url.pathname.startsWith('/api/')) {
     for (const candidate of routes) {
