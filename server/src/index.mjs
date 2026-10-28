@@ -45,16 +45,22 @@ const QUOTA_BYTES = Math.max(1, Number(process.env.BANYUE_QUOTA_MB ?? 200)) * 10
 /**
  * B站解析允许跨域（BANYUE_BILI_CORS）。
  *
- * 服务器 IP 常被 B站风控（HTTP 412），所以线上页面可以把 B站请求转给本机
- * 后端处理——浏览器里的 127.0.0.1 就是用户自己的电脑。这条通道要跨域，
- * 但只对 B站代理这几个只读接口开放，不放开账号/上传类接口。
+ * 为什么需要：服务器（云机房 IP）访问 api.bilibili.com 会被风控挡掉（HTTP 412），
+ * 而用户自己的电脑（家庭宽带）是通的。所以线上页面把 B站请求转给本机后端处理——
+ * 浏览器里的 127.0.0.1 就是用户自己这台电脑。
  *
- * 值为逗号分隔的来源白名单；`*` 表示任意来源。留空则完全关闭（默认）。
+ * 默认值 `*`：本机后端的定位就是「给自己页面当 B站 代理」，默认开放最省事，
+ * 不用每次启动都记着带环境变量。风险面很小——只对 /api/bilibili/* 这几个
+ * 只读接口生效（见 isBiliProxyPath），且不含任何账号/上传/删除能力。
+ *
+ * 想收紧就设 BANYUE_BILI_CORS 为逗号分隔的来源白名单；
+ * 设成 `off`（或 `none`）则完全关闭跨域。
  */
-const BILI_CORS = (process.env.BANYUE_BILI_CORS ?? '')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean)
+const BILI_CORS_RAW = (process.env.BANYUE_BILI_CORS ?? '*').trim()
+const BILI_CORS_DISABLED = BILI_CORS_RAW === 'off' || BILI_CORS_RAW === 'none'
+const BILI_CORS = BILI_CORS_DISABLED
+  ? []
+  : BILI_CORS_RAW.split(',').map((s) => s.trim()).filter(Boolean)
 
 function biliCorsOrigin(req) {
   if (!BILI_CORS.length) return null

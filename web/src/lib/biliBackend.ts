@@ -6,10 +6,8 @@
  * 而用户自己的电脑（家庭宽带）是通的。所以线上页面把 B站请求转给本机后端
  * 处理 —— 浏览器里的 127.0.0.1 就是用户自己这台电脑。
  *
- * 规则：
- * - 页面本身就跑在 localhost / 127.0.0.1 → 直接用同源相对路径
- * - 否则（例如从服务器 IP 打开）→ 指向本机 127.0.0.1:8787
- * - 用户可在设置里覆盖（biliBackend 存在 localStorage）
+ * 代价：本机后端必须开着。没开时这里负责给出人话提示，而不是让它变成
+ * 一个莫名的「网络不通」。
  */
 const LOCAL = 'http://127.0.0.1:8787'
 const STORAGE_KEY = 'banyue:bili-backend'
@@ -21,7 +19,7 @@ function isLocalPage(): boolean {
 
 let cached: string | null = null
 
-/** B站接口的基础地址，末尾不带斜杠 */
+/** B站接口的基础地址，末尾不带斜杠；空串表示同源 */
 export function biliBase(): string {
   if (cached !== null) return cached
   const saved = localStorage.getItem(STORAGE_KEY)?.trim()
@@ -29,7 +27,6 @@ export function biliBase(): string {
     cached = saved.replace(/\/+$/, '')
     return cached
   }
-  // 页面在本地跑：同源即可，不用跨域
   cached = isLocalPage() ? '' : LOCAL
   return cached
 }
@@ -40,12 +37,20 @@ export function biliUrl(path: string): string {
   return base ? `${base}${path}` : path
 }
 
-/** 是否正在跨域借用本机后端（用于提示文案） */
+/** 是否正在借用本机后端（页面不是从 localhost 打开的） */
 export function biliUsingLocal(): boolean {
   return biliBase() !== ''
 }
 
-/** 本机后端是否活着（跨域模式下探测一次，失败则回落到同源） */
+/** 本机后端没开时给的人话提示 */
+export const LOCAL_DOWN_HINT =
+  `B站解析需要本机后端：服务器 IP 会被 B站 风控拦截。\n` +
+  `请在电脑上打开一个终端跑：\n\n` +
+  `  cd E:\\projects\\blog\\server\n` +
+  `  node src/index.mjs\n\n` +
+  `跑起来后刷新页面重试。`
+
+/** 本机后端是否活着 */
 export async function probeLocalBili(): Promise<boolean> {
   if (!biliBase()) return true
   try {

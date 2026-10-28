@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { api } from '@/lib/api'
-import { biliUrl, biliBase, biliUsingLocal } from '@/lib/biliBackend'
+import { biliUrl, biliBase, biliUsingLocal, probeLocalBili, LOCAL_DOWN_HINT } from '@/lib/biliBackend'
 import { fingerprint } from '@/lib/music'
 import { addTrack, findTrackByHash } from '@/lib/db'
 import { listAssets, uploadAsset } from '@/lib/cloud'
@@ -168,12 +168,22 @@ async function resolve(): Promise<void> {
   play.value = null
   trimSrc.value = ''
   try {
+    // 跨域借用本机后端时，先确认它真的开着——否则报错只会是一句
+    // 「网络不通」，用户根本不知道要自己去启动服务。
+    if (biliUsingLocal() && !(await probeLocalBili())) {
+      throw new Error(LOCAL_DOWN_HINT)
+    }
     video.value = await api<VideoInfo>(biliUrl('/api/bilibili/resolve'), { method: 'POST', body: { url } })
     remember(url, video.value)
     pageIndex.value = 0
     await loadPlay()
   } catch (err) {
-    error.value = (err as Error).message
+    const message = (err as Error).message
+    // 探活之后才知道服务挂了（比如中途被关掉），同样给准信儿
+    error.value =
+      biliUsingLocal() && /网络不通|Failed to fetch/i.test(message)
+        ? LOCAL_DOWN_HINT
+        : message
   } finally {
     loading.value = false
   }
@@ -548,7 +558,7 @@ async function saveToCloud(): Promise<void> {
       </ul>
     </section>
 
-    <p v-if="error" class="notice">{{ error }}</p>
+    <p v-if="error" class="notice bili-error">{{ error }}</p>
     <p v-if="loading" class="muted small">正在向 B站 请求视频信息…</p>
 
     <!-- 视频信息 -->
@@ -917,5 +927,12 @@ a.btn {
     width: 100%;
     height: 180px;
   }
+}
+
+/* 「本机后端没开」这类提示是带换行和命令的，保留排版 */
+.bili-error {
+  white-space: pre-line;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  line-height: 1.6;
 }
 </style>
