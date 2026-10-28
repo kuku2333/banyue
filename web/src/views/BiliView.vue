@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useStorage } from '@vueuse/core'
 import { api } from '@/lib/api'
-import { biliUrl, biliBase, biliUsingLocal, probeLocalBili, LOCAL_DOWN_HINT } from '@/lib/biliBackend'
+import { biliUrl, biliBase, biliUsingLocal, probeLocalBili, LOCAL_DOWN_HINT, setBiliBackend, resetBiliBackend, isLocalDevPage } from '@/lib/biliBackend'
 import { fingerprint } from '@/lib/music'
 import { addTrack, findTrackByHash } from '@/lib/db'
 import { listAssets, uploadAsset } from '@/lib/cloud'
@@ -115,6 +115,18 @@ async function pasteAndResolve(): Promise<void> {
   }
 }
 const error = ref('')
+
+/** 手动切到本机后端（服务器解析被风控时的备用通道） */
+function useLocalBili(): void {
+  setBiliBackend('http://127.0.0.1:8787')
+  error.value = ''
+}
+
+/** 切回默认：由服务器解析 */
+function useServerBili(): void {
+  resetBiliBackend()
+  error.value = ''
+}
 const video = ref<VideoInfo | null>(null)
 const pageIndex = ref(0)
 const play = ref<PlayInfo | null>(null)
@@ -522,8 +534,14 @@ async function saveToCloud(): Promise<void> {
         仅限个人学习使用，请尊重原作者版权。
       </p>
       <p v-if="biliUsingLocal()" class="notice small">
-        解析走本机后端（{{ biliBase() }}）——云服务器 IP 会被 B站 拦截，本机网络才通。
-        没开本机后端的话，先在本地跑 <code>cd server &amp;&amp; node src/index.mjs</code>。
+        解析走本机后端（{{ biliBase() }}）。本机后端没开的话会失败——先在本地跑
+        <code>cd server &amp;&amp; node src/index.mjs</code>，或
+        <button type="button" class="link-btn" @click="useServerBili">恢复默认（用服务器解析）</button>
+      </p>
+      <p v-else class="muted small">
+        服务器解析不给力？
+        <button type="button" class="link-btn" @click="useLocalBili">改用本机后端解析</button>
+        <span v-if="isLocalDevPage()">（本地开发时无需切换）</span>
       </p>
     </div>
 
@@ -934,5 +952,15 @@ a.btn {
   white-space: pre-line;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   line-height: 1.6;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent, #4cc2ff);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
 }
 </style>
