@@ -32,14 +32,62 @@ function headers() {
     'user-agent': UA,
     referer: 'https://www.bilibili.com/',
     origin: 'https://www.bilibili.com',
+    accept: 'application/json, text/plain, */*',
+    'accept-language': 'zh-CN,zh;q=0.9',
+    // B站 的风控会看这几项；真实浏览器跨站请求会带，缺了容易被判成脚本
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-site',
   }
+  const cookies = []
   // 配置了 BANYUE_BILI_SESSDATA 就能拿到高清（1080P 等）
   const sessdata = process.env.BANYUE_BILI_SESSDATA
-  if (sessdata) base.cookie = `SESSDATA=${sessdata}`
+  if (sessdata) cookies.push(`SESSDATA=${sessdata}`)
+  // 设备指纹：buvid3 和 buvid4 必须成对出现，缺一个仍然 412（实测）
+  const buvid = getBuvidSync()
+  if (buvid) cookies.push(`buvid3=${buvid.b3}`, `buvid4=${buvid.b4}`)
+  if (cookies.length) base.cookie = cookies.join('; ')
   return base
 }
 
+/**
+ * 设备指纹（buvid3 + buvid4）。
+ *
+ * B站 的部分接口对「没有 buvid」的请求一律返回 412：只带 buvid3 也 412，
+ * 必须 b3/b4 成对（2026-10 实测）。这两个值通过官方 spi 接口领取，一个
+ * 进程生命周期内复用即可，不必每请求都去取。
+ */
+let buvidCache = null
+let buvidFetching = null
+
+function getBuvidSync() {
+  return buvidCache
+}
+
+async function ensureBuvid() {
+  if (buvidCache) return buvidCache
+  if (buvidFetching) return buvidFetching
+  buvidFetching = (async () => {
+    try {
+      const res = await fetch(`${API}/x/frontend/finger/spi`, { headers: { 'user-agent': UA } })
+      if (!res.ok) return null
+      const json = await res.json()
+      const b3 = json?.data?.b_3
+      const b4 = json?.data?.b_4
+      if (!b3 || !b4) return null
+      buvidCache = { b3, b4 }
+      return buvidCache
+    } catch {
+      return null
+    } finally {
+      buvidFetching = null
+    }
+  })()
+  return buvidFetching
+}
+
 async function apiJson(path) {
+  await ensureBuvid()
   const response = await fetch(API + path, { headers: headers() })
   if (!response.ok) throw new Error(`B站接口 HTTP ${response.status}`)
   return response.json()
